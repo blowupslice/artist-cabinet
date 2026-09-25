@@ -1,0 +1,21 @@
+from django.contrib import admin
+from django.contrib.auth import views as auth_views
+from django.urls import path
+
+from cabinet import views
+
+urlpatterns = [
+    path("", views.dashboard, name="dashboard"),
+    path("login/", views.LoginView.as_view(), name="login"),
+    path("logout/", auth_views.LogoutView.as_view(), name="logout"),
+    path("finance/", views.finance, name="finance"),
+    path("finance/<slug:slug>/", views.finance, name="finance_period"),
+    path("account/", views.account, name="account"),
+    path("contracts/<int:pk>/download/", views.download_contract, name="download_contract"),
+    path("reports/<int:pk>/summary.xlsx", views.export_summary, name="export_summary"),
+    path("reports/<int:pk>/<str:kind>/", views.download_report_file, name="download_report_file"),
+    path("view-as/stop/", views.stop_view_as, name="stop_view_as"),
+    path("files/<path:path>", views.protected_file, name="protected_file"),
+    path("healthz", views.healthz),
+    path("admin/", admin.site.urls),
+]

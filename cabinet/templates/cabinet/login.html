@@ -1,0 +1,39 @@
+{% load static %}<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Вход — {{ SITE_NAME }}</title>
+<link rel="stylesheet" href="{% static 'cabinet/style.css' %}">
+</head>
+<body>
+<div class="login-wrap">
+  <div class="login-card">
+    <div class="brand"><span class="brand-mark">♪</span>{{ SITE_NAME }}</div>
+    <div class="card">
+      <h1>Вход в кабинет</h1>
+      <p class="muted small" style="text-align:center;margin:0 0 20px">Используйте почту и пароль, которые вам выдал менеджер</p>
+      {% if form.non_field_errors %}<div class="alert alert-error">{{ form.non_field_errors|join:" " }}</div>{% endif %}
+      <form method="post" novalidate>
+        {% csrf_token %}
+        <div class="field">
+          <label for="{{ form.username.id_for_label }}">Email</label>
+          {{ form.username }}
+          {{ form.username.errors }}
+        </div>
+        <div class="field">
+          <label for="{{ form.password.id_for_label }}">Пароль</label>
+          {{ form.password }}
+          {{ form.password.errors }}
+        </div>
+        <input type="hidden" name="next" value="{{ next }}">
+        <button class="btn btn-primary" type="submit">Войти</button>
+      </form>
+    </div>
+    <p class="muted small" style="text-align:center;margin-top:16px">
+      Забыли пароль? Напишите менеджеру{% if SUPPORT_CONTACT %}: {{ SUPPORT_CONTACT }}{% endif %}
+    </p>
+  </div>
+</div>
+</body>
+</html>

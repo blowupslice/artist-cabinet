@@ -1,0 +1,138 @@
+{% extends "cabinet/base.html" %}
+{% load cabinet_tags %}
+{% block title %}Финансы{% if report %} · {{ report.period_short }}{% endif %} — {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="muted small" style="margin:0 0 4px">Финансовый отчёт</p>
+    <h1>{% if report %}{{ report.period_label }}{% else %}Отчётов пока нет{% endif %}</h1>
+  </div>
+  {% if report %}
+  <div class="actions">
+    <a class="btn" href="{% url 'download_report_file' report.pk 'detail' %}">{% include "cabinet/_icon.html" with name="download" %}Детализированный отчёт</a>
+    <a class="btn" href="{% url 'export_summary' report.pk %}">{% include "cabinet/_icon.html" with name="sheet" %}Сводка в Excel</a>
+    {% if report.act_file %}
+    <a class="btn btn-primary" href="{% url 'download_report_file' report.pk 'act' %}">{% include "cabinet/_icon.html" with name="pen" %}Акт для подписания</a>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+
+{% if not report %}
+<div class="card"><p class="empty" style="padding:0">Как только менеджер загрузит первый квартальный отчёт, он появится здесь.</p></div>
+{% else %}
+
+<nav class="periods" style="margin-bottom:18px" aria-label="Период">
+  {% for r in reports %}<a href="{% url 'finance_period' r.slug %}" class="{% if r.pk == report.pk %}active{% endif %}">{{ r.period_short }}</a>{% endfor %}
+</nav>
+
+<div class="grid grid-3" style="margin-bottom:16px">
+  <div class="card">
+    <div class="stat-label">Доход за квартал</div>
+    <div class="stat-value">{{ report.total_amount|money:report.currency }}</div>
+    <div class="stat-sub">
+      {% if delta is not None %}<span class="{% if delta >= 0 %}up{% else %}down{% endif %}">{% if delta >= 0 %}▲ +{% else %}▼ {% endif %}{{ delta|pct }}</span> к {{ prev_report.period_short }}{% else %}&nbsp;{% endif %}
+    </div>
+  </div>
+  <div class="card">
+    <div class="stat-label">Прослушивания</div>
+    <div class="stat-value">{{ report.total_quantity|num }}</div>
+    <div class="stat-sub">Треков: {{ by_track|length }} · площадок: {{ by_platform|length }}</div>
+  </div>
+  <div class="card">
+    <div class="stat-label">Акт</div>
+    <div class="stat-value" style="font-size:20px;padding-top:6px">
+      {% if report.act_status == "signed" %}<span class="badge badge-good" style="font-size:14px">Подписан</span>
+      {% elif report.act_status == "to_sign" %}<span class="badge badge-warn" style="font-size:14px">Ожидает подписания</span>
+      {% else %}<span class="badge badge-muted" style="font-size:14px">Ещё не загружен</span>{% endif %}
+    </div>
+    <div class="stat-sub">
+      {% if report.signed_act_file %}<a href="{% url 'download_report_file' report.pk 'signed-act' %}">Скачать подписанный экземпляр</a>
+      {% elif report.act_file %}Скачайте, подпишите и отправьте менеджеру{% else %}Появится после сверки{% endif %}
+    </div>
+  </div>
+</div>
+
+{% if report.comment %}<div class="comment" style="margin:0 0 16px">{{ report.comment|linebreaksbr }}</div>{% endif %}
+
+<div class="grid grid-2">
+  <section class="card flush" style="align-self:start">
+    <div class="card-head"><h2>По трекам</h2><span class="muted small">нажмите на трек — покажем площадки</span></div>
+    <div class="table-tools" style="border-top:0;margin-top:6px">
+      <input class="search" type="search" id="track-search" placeholder="Найти трек…" aria-label="Поиск по трекам">
+      <button class="btn btn-sm" type="button" id="toggle-all">Раскрыть все</button>
+    </div>
+    <div class="table-scroll">
+      <table class="data" id="tracks">
+        <thead><tr><th>Трек</th><th class="r hide-sm">Прослуш.</th><th class="r">Доход</th><th class="r hide-sm">Доля</th></tr></thead>
+        <tbody>
+        {% for t in by_track %}
+          <tr class="track-row" data-group="{{ forloop.counter }}" data-name="{{ t.track|lower }}" tabindex="0" aria-expanded="false">
+            <td><span class="chev">›</span> {{ t.track }}</td>
+            <td class="r hide-sm">{{ t.quantity|num }}</td>
+            <td class="r">{{ t.amount|money:report.currency }}</td>
+            <td class="r muted hide-sm">{{ t.share|pct }}</td>
+          </tr>
+          {% for p in t.platforms %}
+          <tr class="sub-row" data-parent="{{ forloop.parentloop.counter }}" hidden>
+            <td>{{ p.platform }}</td>
+            <td class="r hide-sm">{{ p.quantity|num }}</td>
+            <td class="r">{{ p.amount|money:report.currency }}</td>
+            <td class="hide-sm"></td>
+          </tr>
+          {% endfor %}
+        {% endfor %}
+        </tbody>
+        <tfoot><tr><td>Итого</td><td class="r hide-sm">{{ report.total_quantity|num }}</td><td class="r">{{ report.total_amount|money:report.currency }}</td><td class="hide-sm"></td></tr></tfoot>
+      </table>
+    </div>
+  </section>
+
+  <section class="card" style="align-self:start">
+    <div class="card-head"><h2>По площадкам</h2></div>
+    {% for p in by_platform %}
+    <div class="platform-row">
+      <div class="platform-name">{{ p.platform }} <span class="muted small">· {{ p.share|pct }}</span></div>
+      <div class="platform-amount">{{ p.amount|money:report.currency }}</div>
+      <div class="meter"><span style="width: {{ p.bar|cssnum }}%"></span></div>
+    </div>
+    {% endfor %}
+  </section>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const table = document.getElementById('tracks');
+  if (!table) return;
+  const rows = [...table.querySelectorAll('tr.track-row')];
+  const subs = g => table.querySelectorAll('tr.sub-row[data-parent="' + g + '"]');
+  function setOpen(row, open) {
+    row.classList.toggle('open', open);
+    row.setAttribute('aria-expanded', open);
+    subs(row.dataset.group).forEach(s => s.hidden = !open);
+  }
+  rows.forEach(row => {
+    row.addEventListener('click', () => setOpen(row, !row.classList.contains('open')));
+    row.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); row.click(); } });
+  });
+  const btn = document.getElementById('toggle-all');
+  btn.addEventListener('click', () => {
+    const open = btn.dataset.open !== '1';
+    rows.filter(r => !r.hidden).forEach(r => setOpen(r, open));
+    btn.dataset.open = open ? '1' : '0';
+    btn.textContent = open ? 'Свернуть все' : 'Раскрыть все';
+  });
+  document.getElementById('track-search').addEventListener('input', e => {
+    const q = e.target.value.trim().toLowerCase();
+    rows.forEach(r => {
+      const show = !q || r.dataset.name.includes(q);
+      r.hidden = !show;
+      if (!show) setOpen(r, false);
+    });
+  });
+})();
+</script>
+{% endblock %}

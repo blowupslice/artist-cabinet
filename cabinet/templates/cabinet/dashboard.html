@@ -1,0 +1,95 @@
+{% extends "cabinet/base.html" %}
+{% load cabinet_tags %}
+{% block title %}{{ artist.name }} — {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="muted small" style="margin:0 0 4px">Личный кабинет</p>
+    <h1>{{ artist.name }}</h1>
+  </div>
+  {% if latest %}<a class="btn btn-primary" href="{% url 'finance' %}">Открыть финансовый отчёт</a>{% endif %}
+</div>
+
+<div class="grid grid-3" style="margin-bottom:16px">
+  <div class="card">
+    <div class="stat-label">Последний квартал{% if latest %} · {{ latest.period_label }}{% endif %}</div>
+    <div class="stat-value">{% if latest %}{{ latest.total_amount|money:latest.currency }}{% else %}—{% endif %}</div>
+    <div class="stat-sub">{% if latest %}{{ latest.total_quantity|num }} прослушиваний{% else %}Отчётов пока нет{% endif %}</div>
+  </div>
+  <div class="card">
+    <div class="stat-label">Всего по отчётам</div>
+    <div class="stat-value">{{ total_all|money:currency }}</div>
+    <div class="stat-sub">Кварталов в кабинете: {{ reports_count }}</div>
+  </div>
+  <div class="card">
+    <div class="stat-label">Акты на подпись</div>
+    <div class="stat-value">{{ to_sign|length }}</div>
+    <div class="stat-sub">{% if to_sign %}Скачайте, подпишите и отправьте менеджеру{% else %}Всё подписано{% endif %}</div>
+  </div>
+</div>
+
+<div class="grid grid-2">
+  <div class="grid" style="align-content:start">
+    {% if history %}
+    <section class="card">
+      <div class="card-head"><h2>Доход по кварталам</h2><span class="muted small">нажмите на столбец</span></div>
+      <div class="bars">
+        {% for r in history %}
+        <a href="{% url 'finance_period' r.slug %}" title="{{ r.period_label }}: {{ r.total_amount|money:r.currency }}" class="{% if forloop.last %}current{% endif %}">
+          <span class="bar" style="height: {{ r.bar|cssnum }}%"></span>
+          <span>{{ r.period_short }}</span>
+        </a>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+
+    {% if to_sign %}
+    <section class="card">
+      <div class="card-head"><h2>Акты на подпись</h2></div>
+      <ul class="files">
+        {% for r in to_sign %}
+        <li>
+          <span class="file-icon">{% include "cabinet/_icon.html" with name="pen" %}</span>
+          <div class="file-main"><div class="file-title">Акт за {{ r.period_label }}</div><div class="muted small">{{ r.total_amount|money:r.currency }}</div></div>
+          <a class="btn btn-sm" href="{% url 'download_report_file' r.pk 'act' %}">{% include "cabinet/_icon.html" with name="download" %}Скачать</a>
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+
+    <section class="card">
+      <div class="card-head"><h2>Договоры</h2><span class="muted small">{{ contracts|length }}</span></div>
+      {% if contracts %}
+      <ul class="files">
+        {% for c in contracts %}
+        <li>
+          <span class="file-icon">{% include "cabinet/_icon.html" with name="doc" %}</span>
+          <div class="file-main">
+            <div class="file-title">{{ c.title }}</div>
+            <div class="muted small">{% if c.number %}№ {{ c.number }}{% endif %}{% if c.number and c.signed_date %} · {% endif %}{% if c.signed_date %}от {{ c.signed_date|date:"j E Y" }}{% endif %}</div>
+          </div>
+          <a class="btn btn-sm" href="{% url 'download_contract' c.pk %}">{% include "cabinet/_icon.html" with name="download" %}<span class="hide-sm">Скачать</span></a>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="empty">Подписанные договоры появятся здесь, как только менеджер их загрузит.</p>
+      {% endif %}
+    </section>
+  </div>
+
+  <section class="card" style="align-self:start">
+    <div class="card-head"><h2>Профиль</h2></div>
+    <dl class="profile">
+      <dt>Артист</dt><dd>{{ artist.name }}</dd>
+      {% if artist.legal_name %}<dt>ФИО / компания</dt><dd>{{ artist.legal_name }}</dd>{% endif %}
+      <dt>Email</dt><dd>{{ artist.user.email }}</dd>
+      {% if artist.phone %}<dt>Телефон</dt><dd>{{ artist.phone }}</dd>{% endif %}
+      <dt>В кабинете с</dt><dd>{{ artist.created_at|date:"j E Y" }}</dd>
+    </dl>
+    <p class="muted small" style="margin:18px 0 0">Если данные изменились, сообщите менеджеру{% if SUPPORT_CONTACT %}: {{ SUPPORT_CONTACT }}{% endif %}.</p>
+  </section>
+</div>
+{% endblock %}
