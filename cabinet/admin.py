@@ -1,15 +1,17 @@
 from django.conf import settings
 from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django import forms
 from django.db.models import Count, Max
-from django.urls import reverse
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import path, reverse
 from django.utils.html import format_html, format_html_join
 from django.utils.safestring import mark_safe
 from django.contrib.auth.forms import UserCreationForm, UserChangeForm
 
 from .forms import ArtistAdminForm, ReportAdminForm
 from .importer import ImportError_, parse_report
-from .models import Artist, Contract, Report, User
+from .models import Artist, Contract, LabelSettings, Report, User
 
 admin.site.site_header = f"{settings.SITE_NAME} — управление"
 admin.site.site_title = settings.SITE_NAME
@@ -17,7 +19,7 @@ admin.site.index_title = "Артисты, договоры и отчёты"
 
 
 def money(value, currency=""):
-    s = f"{value:,.2f}".replace(",", " ").replace(".", ",")
+    s = f"{value:,.2f}".replace(",", "\u00a0").replace(".", ",")
     return f"{s} {currency}".strip()
 
 
@@ -25,6 +27,20 @@ class ContractInline(admin.TabularInline):
     model = Contract
     extra = 1
     fields = ["title", "number", "signed_date", "file"]
+
+
+def act_link(obj):
+    if not obj or not obj.pk:
+        return "Появится после сохранения"
+    url = reverse("admin_act_pdf", args=[obj.pk])
+    return format_html('<a href="{}" target="_blank">Скачать акт-отчёт (PDF) ↓</a>', url)
+
+
+def report_summary(obj):
+    if not obj or not obj.pk:
+        return "Появится после сохранения"
+    return (f"Доход лейбла {money(obj.total_gross, obj.currency)} · артисту {money(obj.total_amount, obj.currency)} "
+            f"({obj.rate.normalize():f}%) · {obj.total_quantity:,} прослушиваний · строк: {obj.lines_count}").replace(",", " ")
 
 
 class ReportInline(admin.StackedInline):
@@ -35,17 +51,27 @@ class ReportInline(admin.StackedInline):
         ("year", "quarter", "currency", "is_published"),
         "detail_file",
         ("act_file", "signed_act_file"),
+        ("paid_amount", "act_status"),
         "comment",
         "summary",
+        "act",
     ]
-    readonly_fields = ["summary"]
+    readonly_fields = ["summary", "act"]
     show_change_link = True
 
     @admin.display(description="Итог по файлу")
     def summary(self, obj):
-        if not obj.pk:
-            return "Появится после сохранения"
-        return f"{money(obj.total_amount, obj.currency)} · {obj.total_quantity:,} прослушиваний · строк: {obj.lines_count}".replace(",", " ")
+        return report_summary(obj)
+
+    @admin.display(description="Акт")
+    def act(self, obj):
+        return act_link(obj)
+
+
+class BulkUploadForm(forms.Form):
+    file = forms.FileField(label="Отчёт дистрибьютора (.xlsx или .csv)",
+                           help_text="Файл за любой срок. Строки разложатся по кварталам по колонке периода.")
+    publish = forms.BooleanField(label="Сразу показать новые отчёты артисту", required=False, initial=True)
 
 
 @admin.register(Artist)
@@ -54,14 +80,63 @@ class ArtistAdmin(admin.ModelAdmin):
     list_display = ["name", "login_email", "contracts_n", "reports_n", "last_report", "access", "open_as_artist"]
     search_fields = ["name", "legal_name", "user__email"]
     inlines = [ContractInline, ReportInline]
-    fieldsets = [
-        ("Вход в кабинет", {"fields": ["email", "password", "is_active"]}),
-        ("Профиль", {"fields": ["name", "legal_name", "phone", "notes"]}),
-    ]
+    readonly_fields = ["bulk_upload"]
+
+    def get_fieldsets(self, request, obj=None):
+        sets = [
+            ("Вход в кабинет", {"fields": ["email", "password", "is_active"]}),
+            ("Профиль", {"fields": ["name", "legal_name", "phone", "royalty_rate", "notes"]}),
+            ("Реквизиты для акта", {"fields": ["address", "inn"]}),
+        ]
+        if obj:
+            sets.insert(1, ("Отчёты", {"fields": ["bulk_upload"]}))
+        return sets
+
+    def get_readonly_fields(self, request, obj=None):
+        return ["bulk_upload"] if obj else []
+
+    @admin.display(description="Общий отчёт")
+    def bulk_upload(self, obj):
+        url = reverse("admin:cabinet_artist_bulk_upload", args=[obj.pk])
+        return format_html('<a class="button" href="{}">Загрузить отчёт за несколько кварталов</a>'
+                           '<div class="help">Один файл дистрибьютора — кабинет сам разложит его по кварталам '
+                           'и посчитает долю артиста.</div>', url)
 
     def save_model(self, request, obj, form, change):
         form.save_user(obj)
         super().save_model(request, obj, form, change)
+        pwd = getattr(form, "generated_password", None)
+        if pwd:
+            self.message_user(request, format_html(
+                "Пароль для входа артиста <b>{}</b>: <code style='font-size:15px'>{}</code> — "
+                "скопируйте и отправьте артисту. Повторно он не показывается.", obj.user.email, pwd),
+                messages.WARNING)
+
+    def get_urls(self):
+        return [
+            path("<int:pk>/bulk-upload/", self.admin_site.admin_view(self.bulk_upload_view),
+                 name="cabinet_artist_bulk_upload"),
+        ] + super().get_urls()
+
+    def bulk_upload_view(self, request, pk):
+        from .bulk import import_by_quarters
+        artist = get_object_or_404(Artist, pk=pk)
+        form = BulkUploadForm(request.POST or None, request.FILES or None)
+        if request.method == "POST" and form.is_valid():
+            try:
+                results, bad = import_by_quarters(artist, form.cleaned_data["file"], form.cleaned_data["publish"])
+            except ImportError_ as exc:
+                form.add_error("file", str(exc))
+            else:
+                parts = [f"{r.period_short}: артисту {money(r.total_amount)} ₽" + (" (новый)" if c else " (обновлён)")
+                         for r, c in results]
+                self.message_user(request, f"Загружено кварталов: {len(results)}. " + "; ".join(parts), messages.SUCCESS)
+                if bad:
+                    self.message_user(request, f"Строк без понятного периода пропущено: {bad}", messages.WARNING)
+                return redirect("admin:cabinet_artist_change", artist.pk)
+        context = dict(self.admin_site.each_context(request), title=f"Общий отчёт — {artist.name}",
+                       form=form, artist=artist, opts=self.model._meta)
+        return render(request, "admin/cabinet/bulk_upload.html", context)
 
     def get_queryset(self, request):
         return super().get_queryset(request).select_related("user").annotate(
@@ -105,14 +180,21 @@ class ReportAdmin(admin.ModelAdmin):
     search_fields = ["artist__name", "artist__user__email"]
     autocomplete_fields = ["artist"]
     list_editable = ["is_published"]
-    readonly_fields = ["total_amount", "total_quantity", "lines_count", "top_tracks"]
+    readonly_fields = ["total_gross", "total_amount", "total_quantity", "lines_count", "top_tracks", "act"]
     actions = ["reimport", "mark_signed"]
     fieldsets = [
-        (None, {"fields": ["artist", ("year", "quarter", "currency"), "is_published"]}),
-        ("Файлы", {"fields": ["detail_file", "act_file", "act_status", "signed_act_file"]}),
+        (None, {"fields": ["artist", ("year", "quarter", "currency"), "royalty_rate", "is_published"]}),
+        ("Файлы", {"fields": ["detail_file", "signed_act_file", "act_status"]}),
+        ("Акт-отчёт", {"fields": ["act", "act_date", "paid_amount", "act_file"],
+                       "description": "Акт формируется автоматически по данным отчёта. Загрузите свой файл "
+                                      "в «Акт для подписания», только если хотите заменить автоматический."}),
         ("Для артиста", {"fields": ["comment"]}),
-        ("Что получилось из файла", {"fields": ["total_amount", "total_quantity", "lines_count", "top_tracks"]}),
+        ("Что получилось из файла", {"fields": ["total_gross", "total_amount", "total_quantity", "lines_count", "top_tracks"]}),
     ]
+
+    @admin.display(description="Акт")
+    def act(self, obj):
+        return act_link(obj)
 
     @admin.display(description="Период", ordering="year")
     def period(self, obj):
@@ -151,6 +233,21 @@ class ReportAdmin(admin.ModelAdmin):
     def mark_signed(self, request, queryset):
         n = queryset.exclude(act_file="").update(act_status=Report.ActStatus.SIGNED)
         self.message_user(request, f"Отмечено: {n}", messages.SUCCESS)
+
+
+@admin.register(LabelSettings)
+class LabelSettingsAdmin(admin.ModelAdmin):
+    fields = ["name", "address", "inn", "ogrn", "signer", "payout_threshold"]
+
+    def has_add_permission(self, request):
+        return not LabelSettings.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def changelist_view(self, request, extra_context=None):
+        obj = LabelSettings.get()
+        return redirect("admin:cabinet_labelsettings_change", obj.pk)
 
 
 @admin.register(Contract)
