@@ -4,8 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}{{ SITE_NAME }}{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=Unbounded:wght@500;600;700&display=swap">
 <link rel="stylesheet" href="{% static 'cabinet/style.css' %}">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%235b3df5'/><text x='16' y='22' font-size='16' text-anchor='middle' fill='white'>♪</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23e2583b'/><text x='16' y='22' font-size='16' text-anchor='middle' fill='white'>♪</text></svg>">
 </head>
 <body>
 {% if request.viewing_as %}
@@ -13,10 +15,11 @@
 {% endif %}
 <header class="topbar">
   <div class="topbar-inner">
-    <a class="brand" href="{% url 'dashboard' %}"><span class="brand-mark">♪</span><span class="brand-name">{{ SITE_NAME }}</span></a>
+    <a class="brand" href="{% url 'dashboard' %}">{% include "cabinet/_logo.html" %}<span class="brand-name">Кабинет артиста</span></a>
     <nav class="nav">
       <a href="{% url 'dashboard' %}" class="{% if nav == 'dashboard' %}active{% endif %}">Профиль</a>
       <a href="{% url 'finance' %}" class="{% if nav == 'finance' %}active{% endif %}">Финансы</a>
+      <a href="{% url 'stats' %}" class="{% if nav == 'stats' %}active{% endif %}">Статистика</a>
       <a href="{% url 'account' %}" class="{% if nav == 'account' %}active{% endif %}">Настройки</a>
     </nav>
     <div class="user-chip">
