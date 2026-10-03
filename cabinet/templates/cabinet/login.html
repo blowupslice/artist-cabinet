@@ -4,12 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Вход — {{ SITE_NAME }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=Unbounded:wght@500;600;700&display=swap">
 <link rel="stylesheet" href="{% static 'cabinet/style.css' %}">
 </head>
 <body>
 <div class="login-wrap">
   <div class="login-card">
-    <div class="brand"><span class="brand-mark">♪</span>{{ SITE_NAME }}</div>
+    <div class="brand">{% include "cabinet/_logo.html" %}<span class="brand-name">Кабинет артиста</span></div>
     <div class="card">
       <h1>Вход в кабинет</h1>
       <p class="muted small" style="text-align:center;margin:0 0 20px">Используйте почту и пароль, которые вам выдал менеджер</p>
