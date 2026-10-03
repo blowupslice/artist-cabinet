@@ -10,6 +10,7 @@ urlpatterns = [
     path("logout/", auth_views.LogoutView.as_view(), name="logout"),
     path("finance/", views.finance, name="finance"),
     path("finance/<slug:slug>/", views.finance, name="finance_period"),
+    path("stats/", views.stats, name="stats"),
     path("account/", views.account, name="account"),
     path("contracts/<int:pk>/download/", views.download_contract, name="download_contract"),
     path("reports/<int:pk>/summary.xlsx", views.export_summary, name="export_summary"),
