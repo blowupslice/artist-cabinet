@@ -11,9 +11,7 @@
   <div class="actions">
     <a class="btn" href="{% url 'download_report_file' report.pk 'detail' %}">{% include "cabinet/_icon.html" with name="download" %}Детализированный отчёт</a>
     <a class="btn" href="{% url 'export_summary' report.pk %}">{% include "cabinet/_icon.html" with name="sheet" %}Сводка в Excel</a>
-    {% if report.act_file %}
     <a class="btn btn-primary" href="{% url 'download_report_file' report.pk 'act' %}">{% include "cabinet/_icon.html" with name="pen" %}Акт для подписания</a>
-    {% endif %}
   </div>
   {% endif %}
 </div>
@@ -28,10 +26,10 @@
 
 <div class="grid grid-3" style="margin-bottom:16px">
   <div class="card">
-    <div class="stat-label">Доход за квартал</div>
+    <div class="stat-label">Ваше вознаграждение за квартал</div>
     <div class="stat-value">{{ report.total_amount|money:report.currency }}</div>
     <div class="stat-sub">
-      {% if delta is not None %}<span class="{% if delta >= 0 %}up{% else %}down{% endif %}">{% if delta >= 0 %}▲ +{% else %}▼ {% endif %}{{ delta|pct }}</span> к {{ prev_report.period_short }}{% else %}&nbsp;{% endif %}
+      {% if delta is not None %}<span class="{% if delta >= 0 %}up{% else %}down{% endif %}">{% if delta >= 0 %}▲ +{% else %}▼ {% endif %}{{ delta|pct }}</span> к {{ prev_report.period_short }} · {% endif %}ваша доля {{ report.rate|floatformat:"-2" }}%
     </div>
   </div>
   <div class="card">
@@ -48,7 +46,7 @@
     </div>
     <div class="stat-sub">
       {% if report.signed_act_file %}<a href="{% url 'download_report_file' report.pk 'signed-act' %}">Скачать подписанный экземпляр</a>
-      {% elif report.act_file %}Скачайте, подпишите и отправьте менеджеру{% else %}Появится после сверки{% endif %}
+      {% else %}Скачайте, подпишите и отправьте менеджеру{% endif %}
     </div>
   </div>
 </div>
