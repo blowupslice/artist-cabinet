@@ -74,6 +74,13 @@ class Artist(models.Model):
     name = models.CharField("Имя / псевдоним", max_length=200)
     legal_name = models.CharField("ФИО / юр. лицо", max_length=300, blank=True)
     phone = models.CharField("Телефон", max_length=50, blank=True)
+    royalty_rate = models.DecimalField(
+        "Доля артиста, %", max_digits=5, decimal_places=2, default=Decimal("50"),
+        help_text="Какой процент дохода лейбла получает артист по договору. "
+                  "В кабинете артист видит только свою долю.",
+    )
+    address = models.CharField("Адрес (для акта)", max_length=400, blank=True)
+    inn = models.CharField("ИНН (для акта)", max_length=20, blank=True)
     notes = models.TextField("Заметки (видны только вам)", blank=True)
     created_at = models.DateTimeField("Создан", auto_now_add=True)
 
@@ -111,6 +118,34 @@ def upload_act(instance, filename):
 
 def upload_signed_act(instance, filename):
     return _upload_path(instance, filename, "signed_acts")
+
+
+class LabelSettings(models.Model):
+    """Реквизиты лейбла для шапки и подписи в актах. Запись одна на весь сайт."""
+
+    name = models.CharField("Название (как в акте)", max_length=300, default="", blank=True,
+                            help_text="Например: ИП Сайкин Михаил Викторович")
+    address = models.CharField("Адрес", max_length=400, blank=True)
+    inn = models.CharField("ИНН", max_length=20, blank=True)
+    ogrn = models.CharField("ОГРН / ОГРНИП", max_length=20, blank=True)
+    signer = models.CharField("Подпись (Фамилия И.О.)", max_length=100, blank=True,
+                              help_text="Например: Сайкин М.В.")
+    payout_threshold = models.DecimalField(
+        "Минимальная сумма выплаты, ₽", max_digits=12, decimal_places=2, default=Decimal("5000"),
+        help_text="Меньшие суммы копятся до этого порога, но выплачиваются не позднее конца года.",
+    )
+
+    class Meta:
+        verbose_name = "реквизиты лейбла"
+        verbose_name_plural = "реквизиты лейбла"
+
+    def __str__(self):
+        return self.name or "Реквизиты лейбла"
+
+    @classmethod
+    def get(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
 
 
 class Contract(models.Model):
@@ -167,12 +202,22 @@ class Report(models.Model):
         "Подписанный акт", upload_to=upload_signed_act, blank=True,
         help_text="Необязательно: скан акта, подписанного артистом.",
     )
-    act_status = models.CharField("Статус акта", max_length=10, choices=ActStatus.choices, default=ActStatus.NONE)
+    act_status = models.CharField("Статус акта", max_length=10, choices=ActStatus.choices, default=ActStatus.TO_SIGN)
+    act_date = models.DateField("Дата акта", null=True, blank=True, help_text="Если пусто — дата загрузки отчёта.")
+    royalty_rate = models.DecimalField(
+        "Доля артиста, %", max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text="Если пусто — берётся доля из карточки артиста.",
+    )
+    paid_amount = models.DecimalField(
+        "Выплачено артисту по этому акту, ₽", max_digits=14, decimal_places=2, default=0,
+        help_text="Заполните после выплаты — сумма учтётся в следующих актах.",
+    )
 
     is_published = models.BooleanField("Показывать артисту", default=True)
     comment = models.TextField("Комментарий для артиста", blank=True)
 
-    total_amount = models.DecimalField("Итого", max_digits=16, decimal_places=2, default=0, editable=False)
+    total_amount = models.DecimalField("Итого артисту", max_digits=16, decimal_places=2, default=0, editable=False)
+    total_gross = models.DecimalField("Доход лейбла", max_digits=16, decimal_places=2, default=0, editable=False)
     total_quantity = models.BigIntegerField("Всего прослушиваний", default=0, editable=False)
     lines_count = models.PositiveIntegerField("Строк в отчёте", default=0, editable=False)
 
@@ -202,13 +247,22 @@ class Report(models.Model):
     def slug(self):
         return f"{self.year}-q{self.quarter}"
 
+    @property
+    def rate(self):
+        if self.royalty_rate is not None:
+            return self.royalty_rate
+        return self.artist.royalty_rate if self.artist_id else Decimal("100")
+
     def save(self, *args, **kwargs):
-        if self.act_file and self.act_status == self.ActStatus.NONE:
-            self.act_status = self.ActStatus.TO_SIGN
+        # Акт формируется автоматически, поэтому он всегда есть и ждёт подписи
         if self.signed_act_file:
             self.act_status = self.ActStatus.SIGNED
-        if not self.act_file and not self.signed_act_file:
-            self.act_status = self.ActStatus.NONE
+        elif self.act_status == self.ActStatus.NONE:
+            self.act_status = self.ActStatus.TO_SIGN
+        if self.royalty_rate is None and self.artist_id:
+            self.royalty_rate = self.artist.royalty_rate
+        if not self.act_date:
+            self.act_date = timezone.localdate()
         rows = getattr(self, "_parsed_rows", None)
         with transaction.atomic():
             super().save(*args, **kwargs)
@@ -217,20 +271,28 @@ class Report(models.Model):
                 self._parsed_rows = None
 
     def replace_lines(self, rows):
+        """rows — строки из импортёра, где amount = доход лейбла от дистрибьютора.
+        В базе amount хранит долю артиста, gross — доход лейбла."""
+        share = Decimal(self.rate) / Decimal(100)
+        objs = []
+        for row in rows:
+            row = dict(row)
+            gross = Decimal(row.pop("amount"))
+            objs.append(RoyaltyLine(report=self, gross=gross,
+                                    amount=(gross * share).quantize(Decimal("0.000001")), **row))
         self.lines.all().delete()
-        RoyaltyLine.objects.bulk_create(
-            [RoyaltyLine(report=self, **row) for row in rows], batch_size=2000,
-        )
+        RoyaltyLine.objects.bulk_create(objs, batch_size=2000)
         self.recalc_totals()
 
     def recalc_totals(self):
-        agg = self.lines.aggregate(a=Sum("amount"), q=Sum("quantity"))
+        agg = self.lines.aggregate(a=Sum("amount"), g=Sum("gross"), q=Sum("quantity"))
         Report.objects.filter(pk=self.pk).update(
             total_amount=(agg["a"] or Decimal("0")).quantize(Decimal("0.01")),
+            total_gross=(agg["g"] or Decimal("0")).quantize(Decimal("0.01")),
             total_quantity=agg["q"] or 0,
             lines_count=self.lines.count(),
         )
-        self.refresh_from_db(fields=["total_amount", "total_quantity", "lines_count"])
+        self.refresh_from_db(fields=["total_amount", "total_gross", "total_quantity", "lines_count"])
 
 
 class RoyaltyLine(models.Model):
@@ -241,8 +303,10 @@ class RoyaltyLine(models.Model):
     isrc = models.CharField("ISRC", max_length=20, blank=True)
     platform = models.CharField("Площадка", max_length=200)
     country = models.CharField("Страна", max_length=100, blank=True)
+    rights_type = models.CharField("Тип прав", max_length=100, blank=True)
     quantity = models.BigIntegerField("Прослушивания", default=0)
-    amount = models.DecimalField("Сумма", max_digits=18, decimal_places=6, default=0)
+    gross = models.DecimalField("Доход лейбла", max_digits=18, decimal_places=6, default=0)
+    amount = models.DecimalField("Доля артиста", max_digits=18, decimal_places=6, default=0)
 
     class Meta:
         verbose_name = "строка отчёта"
