@@ -7,6 +7,17 @@ from .models import Artist, Report
 
 User = get_user_model()
 
+PASSWORD_ALPHABET = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+
+def generate_password(length=12):
+    """Случайный пароль без похожих символов (l/1, O/0), с буквами разного регистра и цифрами."""
+    import secrets
+    while True:
+        pwd = "".join(secrets.choice(PASSWORD_ALPHABET) for _ in range(length))
+        if any(c.islower() for c in pwd) and any(c.isupper() for c in pwd) and any(c.isdigit() for c in pwd):
+            return pwd
+
 
 class EmailLoginForm(AuthenticationForm):
     username = forms.EmailField(
@@ -33,14 +44,14 @@ class ArtistAdminForm(forms.ModelForm):
     password = forms.CharField(
         label="Пароль", required=False, strip=False,
         widget=forms.TextInput(attrs={"autocomplete": "new-password"}),
-        help_text="Для нового артиста — обязательно. Для существующего заполните, "
-                  "только если хотите сменить пароль. Отправьте его артисту сами.",
+        help_text="Для нового артиста можно оставить пустым — пароль сгенерируется сам и покажется "
+                  "после сохранения. Для существующего заполните, только если хотите сменить пароль.",
     )
     is_active = forms.BooleanField(label="Доступ открыт", required=False, initial=True)
 
     class Meta:
         model = Artist
-        fields = ["name", "legal_name", "phone", "notes"]
+        fields = ["name", "legal_name", "phone", "royalty_rate", "address", "inn", "notes"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -65,9 +76,10 @@ class ArtistAdminForm(forms.ModelForm):
 
     def clean_password(self):
         pwd = self.cleaned_data.get("password")
+        self.generated_password = None
         if not self.instance.pk and not pwd:
-            raise forms.ValidationError("Задайте пароль для нового артиста")
-        if pwd:
+            pwd = self.generated_password = generate_password()
+        elif pwd:
             password_validation.validate_password(pwd)
         return pwd
 
