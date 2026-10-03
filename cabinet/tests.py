@@ -96,7 +96,8 @@ class AccessTests(TestCase):
 
     def test_report_totals_and_status(self):
         self.r1.refresh_from_db()
-        self.assertEqual(self.r1.total_amount, Decimal("5.00"))
+        self.assertEqual(self.r1.total_gross, Decimal("5.00"))
+        self.assertEqual(self.r1.total_amount, Decimal("2.50"))  # доля артиста 50%
         self.assertEqual(self.r1.act_status, Report.ActStatus.TO_SIGN)
 
     def test_pages(self):
@@ -142,7 +143,7 @@ class AccessTests(TestCase):
         User.objects.create_superuser("boss@example.com", "Pass-word-123")
         self.client.login(username="boss@example.com", password="Pass-word-123")
         resp = self.client.post(reverse("admin:cabinet_artist_add"), {
-            "email": "New@Example.com", "password": "Fresh-pass-2026", "is_active": "on", "name": "Новый",
+            "email": "New@Example.com", "password": "Fresh-pass-2026", "is_active": "on", "name": "Новый", "royalty_rate": "50",
             "contracts-TOTAL_FORMS": 0, "contracts-INITIAL_FORMS": 0,
             "reports-TOTAL_FORMS": 0, "reports-INITIAL_FORMS": 0,
         })
@@ -154,7 +155,7 @@ class AccessTests(TestCase):
         User.objects.create_superuser("boss2@example.com", "Pass-word-123")
         self.client.login(username="boss2@example.com", password="Pass-word-123")
         data = {
-            "email": "orphan@example.com", "password": "Fresh-pass-2026", "is_active": "on", "name": "Сирота",
+            "email": "orphan@example.com", "password": "Fresh-pass-2026", "is_active": "on", "name": "Сирота", "royalty_rate": "50",
             "contracts-TOTAL_FORMS": 1, "contracts-INITIAL_FORMS": 0,
             "contracts-0-signed_date": "2026-10-03",  # строка договора без названия и файла -> ошибка
             "reports-TOTAL_FORMS": 0, "reports-INITIAL_FORMS": 0,
@@ -168,7 +169,7 @@ class AccessTests(TestCase):
         User.objects.create_superuser("boss3@example.com", "Pass-word-123")
         self.client.login(username="boss3@example.com", password="Pass-word-123")
         resp = self.client.post(reverse("admin:cabinet_artist_add"), {
-            "email": "lost@example.com", "password": "Fresh-pass-2026", "is_active": "on", "name": "Нашёлся",
+            "email": "lost@example.com", "password": "Fresh-pass-2026", "is_active": "on", "name": "Нашёлся", "royalty_rate": "50",
             "contracts-TOTAL_FORMS": 0, "contracts-INITIAL_FORMS": 0,
             "reports-TOTAL_FORMS": 0, "reports-INITIAL_FORMS": 0,
         })
@@ -176,3 +177,51 @@ class AccessTests(TestCase):
         self.assertEqual(Artist.objects.get(name="Нашёлся").user.email, "lost@example.com")
         self.assertEqual(User.objects.filter(email="lost@example.com").count(), 1)
 
+
+    def test_generated_password_for_new_artist(self):
+        User.objects.create_superuser("boss4@example.com", "Pass-word-123")
+        self.client.login(username="boss4@example.com", password="Pass-word-123")
+        resp = self.client.post(reverse("admin:cabinet_artist_add"), {
+            "email": "gen@example.com", "password": "", "is_active": "on", "name": "Ген", "royalty_rate": "50",
+            "contracts-TOTAL_FORMS": 0, "contracts-INITIAL_FORMS": 0,
+            "reports-TOTAL_FORMS": 0, "reports-INITIAL_FORMS": 0,
+        }, follow=True)
+        msgs = [str(m) for m in resp.context["messages"]]
+        import re
+        pwd = re.search(r"<code[^>]*>([^<]+)</code>", " ".join(msgs)).group(1)
+        self.assertEqual(len(pwd), 12)
+        self.client.logout()
+        self.assertTrue(self.client.login(username="gen@example.com", password=pwd))
+
+    def test_bulk_upload_splits_quarters_and_act(self):
+        from .acts import compute, render_pdf
+        from .bulk import import_by_quarters
+        f = xlsx([
+            ["Исполнитель", "Название трека", "Период использования", "Площадка", "Тип прав", "Территория",
+             "Количество прослушиваний", "Доход"],
+            ["A", "Песня", "2025-11", "Spotify", "Смежные права", "Россия", 100, 3000],
+            ["A", "Песня", "2025-12", "VK Музыка", "Авторские права", "Россия", 50, 1000],
+            ["A", "Песня", "2026-01", "Звук", "Авторские и смежные права", "Казахстан", 10, 20000],
+        ])
+        results, bad = import_by_quarters(self.a1, f)
+        self.assertEqual(bad, 0)
+        periods = {(r.year, r.quarter): r for r, _ in results}
+        self.assertEqual(set(periods), {(2025, 4), (2026, 1)})
+        q4 = periods[(2025, 4)]
+        self.assertEqual(q4.total_gross, Decimal("4000.00"))
+        self.assertEqual(q4.total_amount, Decimal("2000.00"))
+        d = compute(q4)
+        self.assertEqual(d.rights["neighboring"], Decimal("1500.00"))
+        self.assertEqual(d.rights["author"], Decimal("500.00"))
+        self.assertEqual(d.payable_now, Decimal("2000.00"))  # IV квартал — выплата в конце года
+        q1 = periods[(2026, 1)]
+        d1 = compute(q1)
+        self.assertEqual(d1.rights["both"], Decimal("10000.00"))
+        self.assertEqual(d1.payable_prev, Decimal("2000.00"))
+        self.assertTrue(render_pdf(q1).startswith(b"%PDF"))
+        self.client.login(username="one@example.com", password="Pass-word-123")
+        resp = self.client.get(reverse("download_report_file", args=[q1.pk, "act"]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp["Content-Type"], "application/pdf")
+        resp = self.client.get(reverse("download_report_file", args=[q4.pk, "detail"]))
+        self.assertEqual(resp.status_code, 200)
