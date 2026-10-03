@@ -18,7 +18,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_GET
 
 from .forms import EmailLoginForm, PasswordChangeFormRu
-from .models import Artist, Contract, Report
+from .models import Artist, Contract, Report, RoyaltyLine
+from .stats import breakdown, pct_change, rate_per_1000
 
 
 class LoginView(auth_views.LoginView):
@@ -150,6 +151,7 @@ def finance(request, slug=None):
     for p in by_platform:
         p["share"] = float(p["amount"] / total * 100) if total else 0
         p["bar"] = float(p["amount"] / top * 100) if top else 0
+        p["rate"] = rate_per_1000(p["amount"], p["quantity"])
     for t in by_track:
         t["share"] = float(t["amount"] / total * 100) if total else 0
         t["platforms"] = breakdown.get(t["track"], [])
@@ -169,6 +171,93 @@ def finance(request, slug=None):
         "by_platform": by_platform,
         "by_track": by_track,
         "nav": "finance",
+    })
+
+
+@artist_required
+def stats(request):
+    artist = request.artist
+    reports = list(published_reports(artist))
+    if not reports:
+        return render(request, "cabinet/stats.html", {"artist": artist, "reports": [], "nav": "stats"})
+
+    years = sorted({r.year for r in reports}, reverse=True)
+    options = [("all", "За всё время")] + [(str(y), f"{y} год") for y in years] + [(r.slug, r.period_short) for r in reports]
+    sel = request.GET.get("p", "all")
+    if sel not in {k for k, _ in options}:
+        sel = "all"
+
+    prev_reports = None
+    if sel == "all":
+        selected = reports
+        title = "За всё время"
+    elif sel.isdigit():
+        y = int(sel)
+        selected = [r for r in reports if r.year == y]
+        title = f"{y} год"
+        prev = [r for r in reports if r.year == y - 1]
+        prev_reports = prev or None
+    else:
+        idx = next(i for i, r in enumerate(reports) if r.slug == sel)
+        selected = [reports[idx]]
+        title = reports[idx].period_label
+        prev_reports = [reports[idx + 1]] if idx + 1 < len(reports) else None
+
+    lines = RoyaltyLine.objects.filter(report__in=selected)
+    prev_lines = RoyaltyLine.objects.filter(report__in=prev_reports) if prev_reports else None
+
+    total = sum((r.total_amount for r in selected), Decimal(0))
+    streams = sum((r.total_quantity for r in selected), 0)
+    prev_total = sum((r.total_amount for r in prev_reports), Decimal(0)) if prev_reports else None
+    prev_streams = sum((r.total_quantity for r in prev_reports), 0) if prev_reports else None
+
+    platforms = breakdown(lines, "platform", prev_lines)
+    tracks = breakdown(lines, "track", prev_lines)
+    countries = breakdown(lines, "country", prev_lines)
+    has_countries = any(c["key"] for c in countries)
+
+    # Динамика по кварталам (по возрастанию времени)
+    timeline = list(reversed(reports))
+    max_amount = max((r.total_amount for r in timeline), default=0) or 1
+    max_streams = max((r.total_quantity for r in timeline), default=0) or 1
+    selected_ids = {r.pk for r in selected}
+    dynamics = []
+    prev_r = None
+    for r in timeline:
+        dynamics.append({
+            "report": r,
+            "amount_bar": float(r.total_amount / max_amount * 100),
+            "streams_bar": r.total_quantity / max_streams * 100,
+            "rate": rate_per_1000(r.total_amount, r.total_quantity),
+            "delta": pct_change(r.total_amount, prev_r.total_amount) if prev_r else None,
+            "selected": r.pk in selected_ids,
+        })
+        prev_r = r
+
+    best_quarter = max(reports, key=lambda r: r.total_amount)
+    return render(request, "cabinet/stats.html", {
+        "artist": artist,
+        "reports": reports,
+        "options": options,
+        "sel": sel,
+        "title": title,
+        "currency": reports[0].currency,
+        "total": total,
+        "streams": streams,
+        "rate": rate_per_1000(total, streams),
+        "delta_amount": pct_change(total, prev_total) if prev_total else None,
+        "delta_streams": pct_change(streams, prev_streams) if prev_streams else None,
+        "has_prev": bool(prev_reports),
+        "prev_label": ("к " + prev_reports[0].period_short) if prev_reports and len(prev_reports) == 1 and not sel.isdigit()
+                      else (f"к {int(sel) - 1} году" if prev_reports else ""),
+        "platforms": platforms,
+        "tracks": tracks,
+        "countries": countries if has_countries else [],
+        "dynamics": dynamics,
+        "best_quarter": best_quarter,
+        "top_track": tracks[0] if tracks else None,
+        "top_platform": platforms[0] if platforms else None,
+        "nav": "stats",
     })
 
 
