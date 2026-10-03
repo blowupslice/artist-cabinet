@@ -1,0 +1,1 @@
+{% load cabinet_tags %}{% if d is not None %}<span class="{% if d >= 0 %}up{% else %}down{% endif %}">{% if d >= 0 %}▲ +{% else %}▼ {% endif %}{{ d|pct }}</span>{% elif not hide_dash %}<span class="muted">—</span>{% endif %}
