@@ -1,0 +1,30 @@
+{% extends "admin/base_site.html" %}
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Начало</a> ›
+  <a href="{% url 'admin:cabinet_artist_changelist' %}">Артисты</a> ›
+  <a href="{% url 'admin:cabinet_artist_change' artist.pk %}">{{ artist.name }}</a> ›
+  Общий отчёт
+</div>
+{% endblock %}
+{% block content %}
+<div id="content-main">
+  <p>Загрузите файл дистрибьютора за любой срок. Кабинет разложит строки по кварталам по колонке периода
+     (например, «Период использования»), посчитает долю артиста <b>{{ artist.royalty_rate.normalize }}%</b>
+     и подготовит для каждого квартала детализацию и акт-отчёт.</p>
+  <p>Если отчёт за квартал уже есть, он будет заменён данными из нового файла.</p>
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <fieldset class="module aligned">
+      {% for f in form %}
+      <div class="form-row">
+        {{ f.errors }}
+        <div class="flex-container">{{ f.label_tag }} {{ f }}</div>
+        {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
+      </div>
+      {% endfor %}
+    </fieldset>
+    <div class="submit-row"><input type="submit" class="default" value="Загрузить и разложить по кварталам"></div>
+  </form>
+</div>
+{% endblock %}
