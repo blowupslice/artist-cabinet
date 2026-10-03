@@ -59,6 +59,10 @@ class ArtistAdmin(admin.ModelAdmin):
         ("Профиль", {"fields": ["name", "legal_name", "phone", "notes"]}),
     ]
 
+    def save_model(self, request, obj, form, change):
+        form.save_user(obj)
+        super().save_model(request, obj, form, change)
+
     def get_queryset(self, request):
         return super().get_queryset(request).select_related("user").annotate(
             _contracts=Count("contracts", distinct=True),
