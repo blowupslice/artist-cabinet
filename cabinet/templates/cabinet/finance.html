@@ -89,12 +89,13 @@
   </section>
 
   <section class="card" style="align-self:start">
-    <div class="card-head"><h2>По площадкам</h2></div>
+    <div class="card-head"><h2>По площадкам</h2><a class="small" href="{% url 'stats' %}?p={{ report.slug }}">Подробная статистика →</a></div>
     {% for p in by_platform %}
     <div class="platform-row">
       <div class="platform-name">{{ p.platform }} <span class="muted small">· {{ p.share|pct }}</span></div>
       <div class="platform-amount">{{ p.amount|money:report.currency }}</div>
       <div class="meter"><span style="width: {{ p.bar|cssnum }}%"></span></div>
+      <div class="platform-meta muted small">{{ p.quantity|num }} прослуш.{% if p.rate is not None %} · {{ p.rate|money:report.currency }} за 1000{% endif %}</div>
     </div>
     {% endfor %}
   </section>
