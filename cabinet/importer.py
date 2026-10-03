@@ -40,6 +40,11 @@ COLUMN_ALIASES = {
     ],
     "isrc": ["isrc", "код isrc"],
     "country": ["страна", "территория", "регион", "country", "territory", "region", "country code"],
+    "rights_type": ["тип прав", "вид прав", "права", "rights type", "right type", "rights"],
+    "period": [
+        "период использования", "период продаж", "месяц использования", "отчетный месяц", "период", "месяц",
+        "usage period", "sales period", "sale month", "reporting period", "period", "month",
+    ],
 }
 
 # Строки с таким «треком» — это итоги, а не данные
@@ -70,7 +75,7 @@ def detect_columns(header_row):
     used = set()
     # 1) точные совпадения, 2) заголовок начинается с варианта / содержит его
     for strict in (True, False):
-        for field in ("amount", "quantity", "isrc", "track", "platform", "country"):
+        for field in ("amount", "quantity", "isrc", "period", "rights_type", "track", "platform", "country"):
             if field in found:
                 continue
             for alias in aliases[field]:
@@ -92,7 +97,7 @@ def parse_number(value):
         return None
     if isinstance(value, (int, float, Decimal)):
         return Decimal(str(value))
-    s = str(value).strip().replace(" ", "").replace(" ", "")
+    s = str(value).strip().replace("\u00a0", "").replace(" ", "")
     s = re.sub(r"[^\d,.\-eE]", "", s)  # убираем символы валют
     if not s or s in "-.,":
         return None
@@ -149,18 +154,15 @@ def _read_rows(uploaded_file):
     raise ImportError_("Поддерживаются файлы .xlsx и .csv")
 
 
-def parse_report(uploaded_file):
-    """Разбирает файл и возвращает список строк для RoyaltyLine.
-
-    Строки с одинаковыми трек/площадка/страна/ISRC суммируются
-    (например, если в файле разбивка по месяцам)."""
+def find_table(uploaded_file):
+    """Находит в файле таблицу с данными: (строка заголовков, строки данных, колонки)."""
     sheets = _read_rows(uploaded_file)
     last_headers = []
     for rows in sheets:
         for header_idx, row in enumerate(rows[:MAX_HEADER_SCAN]):
             cols = detect_columns(row)
             if {"track", "platform", "amount"} <= cols.keys():
-                return _collect(rows[header_idx + 1:], cols)
+                return row, rows[header_idx + 1:], cols
             if any(c not in (None, "") for c in row) and not last_headers:
                 last_headers = [str(c) for c in row if c not in (None, "")]
     missing_hint = ", ".join(last_headers[:15]) or "—"
@@ -170,6 +172,70 @@ def parse_report(uploaded_file):
         "Добавьте свои названия колонок в cabinet/importer.py (COLUMN_ALIASES) "
         "или переименуйте колонки в файле."
     )
+
+
+def parse_report(uploaded_file):
+    """Разбирает файл и возвращает список строк для RoyaltyLine.
+
+    Строки с одинаковыми трек/площадка/страна/ISRC/тип прав суммируются
+    (например, если в файле разбивка по месяцам)."""
+    _, rows, cols = find_table(uploaded_file)
+    return _collect(rows, cols)
+
+
+MONTHS_RU = {
+    "январ": 1, "феврал": 2, "март": 3, "апрел": 4, "ма": 5, "июн": 6, "июл": 7, "август": 8,
+    "сентябр": 9, "октябр": 10, "ноябр": 11, "декабр": 12,
+}
+
+
+def parse_period(value):
+    """Год и месяц из значения колонки периода: 2025-12, 12.2025, 01.12.2025, дата, «Декабрь 2025»."""
+    import datetime as dt
+    if value is None or value == "":
+        return None
+    if isinstance(value, (dt.date, dt.datetime)):
+        return value.year, value.month
+    s = str(value).strip().lower()
+    m = re.search(r"(\d{4})\s*[-./]\s*(\d{1,2})", s)
+    if m and 1 <= int(m.group(2)) <= 12:
+        return int(m.group(1)), int(m.group(2))
+    m = re.search(r"(\d{1,2})\s*[-./]\s*(\d{4})", s)
+    if m and 1 <= int(m.group(1)) <= 12:
+        return int(m.group(2)), int(m.group(1))
+    m = re.search(r"(\d{4})", s)
+    if m:
+        for stem, num in sorted(MONTHS_RU.items(), key=lambda x: -len(x[0])):
+            if stem in s:
+                return int(m.group(1)), num
+    return None
+
+
+def split_by_quarter(uploaded_file):
+    """Делит общий отчёт по кварталам по колонке периода.
+
+    Возвращает (заголовки, колонки, {(год, квартал): [строки]})."""
+    header, rows, cols = find_table(uploaded_file)
+    if "period" not in cols:
+        raise ImportError_(
+            "В файле нет колонки с периодом (например, «Период использования»), "
+            "поэтому разделить его по кварталам нельзя. Загрузите его как отчёт за один квартал."
+        )
+    groups = {}
+    bad = 0
+    for row in rows:
+        track = str(_cell(row, cols["track"]) or "").strip()
+        if not track or _norm(track) in TOTAL_MARKERS or parse_number(_cell(row, cols["amount"])) is None:
+            continue
+        ym = parse_period(_cell(row, cols["period"]))
+        if not ym:
+            bad += 1
+            continue
+        year, month = ym
+        groups.setdefault((year, (month - 1) // 3 + 1), []).append(row)
+    if not groups:
+        raise ImportError_("Не удалось прочитать периоды в колонке периода")
+    return header, cols, groups, bad
 
 
 def _cell(row, idx):
@@ -191,11 +257,12 @@ def _collect(rows, cols):
         isrc = str(_cell(row, cols.get("isrc")) or "").strip().upper()[:20]
         country = str(_cell(row, cols.get("country")) or "").strip()[:100]
         qty = parse_number(_cell(row, cols.get("quantity"))) or Decimal(0)
+        rights = str(_cell(row, cols.get("rights_type")) or "").strip()[:100]
 
-        key = (track[:500], platform[:200], country, isrc)
+        key = (track[:500], platform[:200], country, isrc, rights)
         item = acc.setdefault(key, {
             "track": key[0], "platform": key[1], "country": country, "isrc": isrc,
-            "quantity": 0, "amount": Decimal(0),
+            "rights_type": rights, "quantity": 0, "amount": Decimal(0),
         })
         item["quantity"] += int(qty)
         item["amount"] += amount
