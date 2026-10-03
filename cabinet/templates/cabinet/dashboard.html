@@ -17,7 +17,7 @@
     <div class="stat-sub">{% if latest %}{{ latest.total_quantity|num }} прослушиваний{% else %}Отчётов пока нет{% endif %}</div>
   </div>
   <div class="card">
-    <div class="stat-label">Всего по отчётам</div>
+    <div class="stat-label">Всего начислено вам</div>
     <div class="stat-value">{{ total_all|money:currency }}</div>
     <div class="stat-sub">Кварталов в кабинете: {{ reports_count }}</div>
   </div>
