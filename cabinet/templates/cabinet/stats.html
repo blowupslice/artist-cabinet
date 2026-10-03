@@ -19,19 +19,19 @@
 
 <div class="grid grid-4" style="margin-bottom:16px">
   <div class="card">
-    <div class="stat-label">Доход</div>
+    <div class="stat-label">Ваше вознаграждение</div>
     <div class="stat-value">{{ total|money:currency }}</div>
-    <div class="stat-sub">{% include "cabinet/_delta.html" with d=delta_amount %}{% if delta_amount is not None %} {{ prev_label }}{% elif sel == "all" %}Кварталов: {{ reports|length }}{% else %}&nbsp;{% endif %}</div>
+    <div class="stat-sub">{% include "cabinet/_delta.html" with d=delta_amount hide_dash=1 %}{% if delta_amount is not None %} {{ prev_label }}{% elif sel == "all" %}Кварталов: {{ reports|length }}{% else %}&nbsp;{% endif %}</div>
   </div>
   <div class="card">
     <div class="stat-label">Прослушивания</div>
     <div class="stat-value">{{ streams|num }}</div>
-    <div class="stat-sub">{% include "cabinet/_delta.html" with d=delta_streams %}{% if delta_streams is not None %} {{ prev_label }}{% else %}Треков: {{ tracks|length }}{% endif %}</div>
+    <div class="stat-sub">{% include "cabinet/_delta.html" with d=delta_streams hide_dash=1 %}{% if delta_streams is not None %} {{ prev_label }}{% else %}Треков: {{ tracks|length }}{% endif %}</div>
   </div>
   <div class="card">
     <div class="stat-label">Средняя стоимость 1000 прослушиваний</div>
     <div class="stat-value">{% if rate is not None %}{{ rate|money:currency }}{% else %}—{% endif %}</div>
-    <div class="stat-sub">по всем площадкам</div>
+    <div class="stat-sub">ваша доля, по всем площадкам</div>
   </div>
   <div class="card">
     <div class="stat-label">Лидеры периода</div>
