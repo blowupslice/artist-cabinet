@@ -1,0 +1,137 @@
+{% extends "cabinet/base.html" %}
+{% load cabinet_tags %}
+{% block title %}Статистика — {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="muted small" style="margin:0 0 4px">Статистика</p>
+    <h1>{% if reports %}{{ title }}{% else %}Пока нет данных{% endif %}</h1>
+  </div>
+</div>
+
+{% if not reports %}
+<div class="card"><p class="empty" style="padding:0">Статистика появится, когда менеджер загрузит первый квартальный отчёт.</p></div>
+{% else %}
+
+<nav class="periods" style="margin-bottom:18px" aria-label="Период">
+  {% for key, label in options %}<a href="?p={{ key }}" class="{% if key == sel %}active{% endif %}">{{ label }}</a>{% endfor %}
+</nav>
+
+<div class="grid grid-4" style="margin-bottom:16px">
+  <div class="card">
+    <div class="stat-label">Доход</div>
+    <div class="stat-value">{{ total|money:currency }}</div>
+    <div class="stat-sub">{% include "cabinet/_delta.html" with d=delta_amount %}{% if delta_amount is not None %} {{ prev_label }}{% elif sel == "all" %}Кварталов: {{ reports|length }}{% else %}&nbsp;{% endif %}</div>
+  </div>
+  <div class="card">
+    <div class="stat-label">Прослушивания</div>
+    <div class="stat-value">{{ streams|num }}</div>
+    <div class="stat-sub">{% include "cabinet/_delta.html" with d=delta_streams %}{% if delta_streams is not None %} {{ prev_label }}{% else %}Треков: {{ tracks|length }}{% endif %}</div>
+  </div>
+  <div class="card">
+    <div class="stat-label">Средняя стоимость 1000 прослушиваний</div>
+    <div class="stat-value">{% if rate is not None %}{{ rate|money:currency }}{% else %}—{% endif %}</div>
+    <div class="stat-sub">по всем площадкам</div>
+  </div>
+  <div class="card">
+    <div class="stat-label">Лидеры периода</div>
+    <div class="stat-lead">{% if top_track %}{{ top_track.name }}{% else %}—{% endif %}</div>
+    <div class="stat-sub">{% if top_platform %}лучшая площадка: {{ top_platform.name }}{% endif %}</div>
+  </div>
+</div>
+
+<section class="card" style="margin-bottom:16px">
+  <div class="card-head"><h2>Динамика по кварталам</h2><span class="muted small">лучший квартал: {{ best_quarter.period_short }}</span></div>
+  <div class="dyn">
+    <div class="dyn-legend"><span class="key key-amount"></span>Доход <span class="key key-streams"></span>Прослушивания</div>
+    <div class="dyn-chart">
+      {% for d in dynamics %}
+      <a class="dyn-col{% if d.selected %} selected{% endif %}" href="?p={{ d.report.slug }}" title="{{ d.report.period_label }}: {{ d.report.total_amount|money:currency }}, {{ d.report.total_quantity|num }} прослушиваний">
+        <span class="dyn-bars">
+          <span class="bar-amount" style="height: {{ d.amount_bar|cssnum }}%"></span>
+          <span class="bar-streams" style="height: {{ d.streams_bar|cssnum }}%"></span>
+        </span>
+        <span class="dyn-label">{{ d.report.period_short }}</span>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="table-scroll" style="margin-top:16px">
+    <table class="data compact">
+      <thead><tr><th>Квартал</th><th class="r">Прослуш.</th><th class="r">Доход</th><th class="r hide-sm">За 1000</th><th class="r">К прошлому</th></tr></thead>
+      <tbody>
+      {% for d in dynamics reversed %}
+        <tr{% if d.selected %} class="row-selected"{% endif %}>
+          <td><a href="?p={{ d.report.slug }}"><span class="hide-sm">{{ d.report.period_label }}</span><span class="show-sm">{{ d.report.period_short }}</span></a></td>
+          <td class="r">{{ d.report.total_quantity|num }}</td>
+          <td class="r">{{ d.report.total_amount|money:currency }}</td>
+          <td class="r hide-sm">{% if d.rate is not None %}{{ d.rate|money:currency }}{% else %}—{% endif %}</td>
+          <td class="r">{% include "cabinet/_delta.html" with d=d.delta %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card flush" style="margin-bottom:16px">
+  <div class="card-head"><h2>Площадки</h2><span class="muted small">сколько прослушиваний и сколько платит каждая</span></div>
+  <div class="table-scroll" style="margin-top:12px">
+    <table class="data">
+      <thead><tr>
+        <th>Площадка</th><th class="r">Прослуш.</th><th class="r hide-sm">Доля</th>
+        <th class="r">Доход</th><th class="r">За 1000</th>{% if has_prev %}<th class="r hide-sm">Доход к прошлому</th>{% endif %}
+      </tr></thead>
+      <tbody>
+      {% for p in platforms %}
+        <tr>
+          <td><strong>{{ p.name }}</strong><div class="meter meter-inline"><span style="width: {{ p.bar|cssnum }}%"></span></div></td>
+          <td class="r">{{ p.quantity|num }}</td>
+          <td class="r muted hide-sm">{{ p.q_share|pct }}</td>
+          <td class="r">{{ p.amount|money:currency }}<div class="muted small">{{ p.share|pct }}</div></td>
+          <td class="r"><strong>{% if p.rate is not None %}{{ p.rate|money:currency }}{% else %}—{% endif %}</strong></td>
+          {% if has_prev %}<td class="r hide-sm">{% if p.is_new %}<span class="badge badge-muted">новая</span>{% else %}{% include "cabinet/_delta.html" with d=p.delta %}{% endif %}</td>{% endif %}
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<div class="grid">
+  <section class="card flush" style="align-self:start">
+    <div class="card-head"><h2>Треки</h2><span class="muted small">{{ tracks|length }}</span></div>
+    <div class="table-scroll" style="margin-top:12px">
+      <table class="data">
+        <thead><tr><th>Трек</th><th class="r">Прослуш.</th><th class="r">Доход</th><th class="r hide-sm">За 1000</th>{% if has_prev %}<th class="r hide-sm">К прошлому</th>{% endif %}</tr></thead>
+        <tbody>
+        {% for t in tracks %}
+          <tr>
+            <td><strong>{{ t.name }}</strong><div class="muted small">{{ t.share|pct }} дохода</div></td>
+            <td class="r">{{ t.quantity|num }}</td>
+            <td class="r">{{ t.amount|money:currency }}</td>
+            <td class="r hide-sm">{% if t.rate is not None %}{{ t.rate|money:currency }}{% else %}—{% endif %}</td>
+            {% if has_prev %}<td class="r hide-sm">{% if t.is_new %}<span class="badge badge-muted">новый</span>{% else %}{% include "cabinet/_delta.html" with d=t.delta %}{% endif %}</td>{% endif %}
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  {% if countries %}
+  <section class="card" style="align-self:start">
+    <div class="card-head"><h2>Страны</h2><span class="muted small">откуда слушают</span></div>
+    {% for c in countries|slice:":12" %}
+    <div class="platform-row">
+      <div class="platform-name">{{ c.name }} <span class="muted small">· {{ c.quantity|num }} прослуш.</span></div>
+      <div class="platform-amount">{{ c.amount|money:currency }}</div>
+      <div class="meter"><span style="width: {{ c.bar|cssnum }}%"></span></div>
+    </div>
+    {% endfor %}
+    {% if countries|length > 12 %}<p class="muted small" style="margin:10px 0 0">и ещё стран: {{ countries|length|add:"-12" }}</p>{% endif %}
+  </section>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}
