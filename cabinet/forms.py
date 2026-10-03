@@ -53,8 +53,14 @@ class ArtistAdminForm(forms.ModelForm):
         qs = User.objects.filter(email__iexact=email)
         if self.instance.pk:
             qs = qs.exclude(pk=self.instance.user_id)
-        if qs.exists():
-            raise forms.ValidationError("Пользователь с таким email уже есть")
+        existing = qs.first()
+        self._reuse_user = None
+        if existing:
+            # Аккаунт без артиста (например, остался от неудачного сохранения) можно привязать заново
+            if not existing.is_staff and not Artist.objects.filter(user=existing).exists():
+                self._reuse_user = existing
+            else:
+                raise forms.ValidationError("Пользователь с таким email уже есть")
         return email
 
     def clean_password(self):
@@ -66,17 +72,27 @@ class ArtistAdminForm(forms.ModelForm):
         return pwd
 
     def save(self, commit=True):
+        """Аккаунт сохраняется только вместе с артистом (см. save_user), чтобы при
+        ошибке в договорах/отчётах на той же странице не оставалось «пустых» аккаунтов."""
         artist = super().save(commit=False)
-        user = artist.user if artist.pk else User(first_name=artist.name[:150])
+        if commit:
+            self.save_user(artist)
+            artist.save()
+        return artist
+
+    def save_user(self, artist):
+        if artist.pk:
+            user = artist.user
+        else:
+            user = getattr(self, "_reuse_user", None) or User()
+            user.first_name = artist.name[:150]
         user.email = self.cleaned_data["email"]
         user.is_active = self.cleaned_data["is_active"]
         if self.cleaned_data.get("password"):
             user.set_password(self.cleaned_data["password"])
         user.save()
         artist.user = user
-        if commit:
-            artist.save()
-        return artist
+        return user
 
 
 class ReportAdminForm(forms.ModelForm):
