@@ -45,7 +45,7 @@ REPO="${REPO#https://github.com/}"; REPO="${REPO%.git}"; REPO="${REPO%/}"
 say "Устанавливаю системные пакеты (1–3 минуты)"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq python3 python3-venv python3-pip git curl ca-certificates cron > /dev/null
+apt-get install -y -qq python3 python3-venv python3-pip git curl ca-certificates cron fonts-dejavu-core > /dev/null
 if ! command -v caddy > /dev/null; then
   apt-get install -y -qq caddy > /dev/null 2>&1 || {
     apt-get install -y -qq debian-keyring debian-archive-keyring apt-transport-https gnupg > /dev/null
