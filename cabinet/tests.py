@@ -105,6 +105,14 @@ class AccessTests(TestCase):
                     reverse("account"), reverse("export_summary", args=[self.r1.pk])]:
             self.assertEqual(self.client.get(url).status_code, 200, url)
 
+    def test_stats_page(self):
+        self.client.login(username="one@example.com", password="Pass-word-123")
+        for q in ["", "?p=all", "?p=2026", "?p=2026-q2", "?p=bad"]:
+            resp = self.client.get(reverse("stats") + q)
+            self.assertEqual(resp.status_code, 200, q)
+            self.assertContains(resp, "Звук")
+        self.assertNotContains(self.client.get(reverse("stats")), "Два")
+
     def test_own_files_ok_foreign_files_404(self):
         self.client.login(username="one@example.com", password="Pass-word-123")
         self.assertEqual(self.client.get(reverse("download_contract", args=[self.c1.pk])).status_code, 200)
@@ -141,3 +149,30 @@ class AccessTests(TestCase):
         self.assertEqual(resp.status_code, 302, getattr(resp, "context", None) and resp.context["adminform"].form.errors)
         self.client.logout()
         self.assertTrue(self.client.login(username="new@example.com", password="Fresh-pass-2026"))
+
+    def test_invalid_inline_does_not_leave_orphan_user(self):
+        User.objects.create_superuser("boss2@example.com", "Pass-word-123")
+        self.client.login(username="boss2@example.com", password="Pass-word-123")
+        data = {
+            "email": "orphan@example.com", "password": "Fresh-pass-2026", "is_active": "on", "name": "Сирота",
+            "contracts-TOTAL_FORMS": 1, "contracts-INITIAL_FORMS": 0,
+            "contracts-0-signed_date": "2026-10-03",  # строка договора без названия и файла -> ошибка
+            "reports-TOTAL_FORMS": 0, "reports-INITIAL_FORMS": 0,
+        }
+        resp = self.client.post(reverse("admin:cabinet_artist_add"), data)
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(User.objects.filter(email="orphan@example.com").exists())
+
+    def test_orphan_user_can_be_reused(self):
+        User.objects.create_user("lost@example.com", "Old-pass-123")
+        User.objects.create_superuser("boss3@example.com", "Pass-word-123")
+        self.client.login(username="boss3@example.com", password="Pass-word-123")
+        resp = self.client.post(reverse("admin:cabinet_artist_add"), {
+            "email": "lost@example.com", "password": "Fresh-pass-2026", "is_active": "on", "name": "Нашёлся",
+            "contracts-TOTAL_FORMS": 0, "contracts-INITIAL_FORMS": 0,
+            "reports-TOTAL_FORMS": 0, "reports-INITIAL_FORMS": 0,
+        })
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(Artist.objects.get(name="Нашёлся").user.email, "lost@example.com")
+        self.assertEqual(User.objects.filter(email="lost@example.com").count(), 1)
+
