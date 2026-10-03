@@ -1,41 +1,26 @@
+/* Фирменный стиль QBIQ: тёмный фон с неоновыми волнами, цвета логотипа */
 :root {
-  --bg: #f6f5f2;
-  --surface: #ffffff;
-  --surface-2: #f0efeb;
-  --text: #1c1b19;
-  --muted: #6b6860;
-  --border: #e4e2dc;
-  --accent: #5b3df5;
-  --accent-soft: #ece8ff;
+  --bg: #050506;
+  --surface: rgba(17, 17, 20, 0.84);
+  --surface-2: rgba(255, 255, 255, 0.06);
+  --text: #f3f2ee;
+  --muted: #a3a29c;
+  --border: rgba(255, 255, 255, 0.09);
+  --accent: #e2583b;          /* кнопки основного сайта */
+  --accent-soft: rgba(226, 88, 59, 0.16);
   --accent-text: #ffffff;
-  --good: #1a7f4b;
-  --good-soft: #e3f4ea;
-  --warn: #a15c00;
-  --warn-soft: #fdf0dc;
-  --bad: #b42318;
-  --radius: 14px;
-  --shadow: 0 1px 2px rgba(20, 18, 12, .04), 0 4px 16px rgba(20, 18, 12, .04);
-  color-scheme: light;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #121211;
-    --surface: #1b1b19;
-    --surface-2: #242421;
-    --text: #efeee9;
-    --muted: #9c998f;
-    --border: #2f2e2b;
-    --accent: #8b74ff;
-    --accent-soft: #2a2447;
-    --accent-text: #ffffff;
-    --good: #5fd49a;
-    --good-soft: #17301f;
-    --warn: #f0b35a;
-    --warn-soft: #33260f;
-    --bad: #ff8a80;
-    --shadow: none;
-    color-scheme: dark;
-  }
+  --brand-red: #f85555;       /* Q */
+  --brand-yellow: #f2ca57;    /* B */
+  --brand-teal: #46b9ae;      /* iQ */
+  --good: #46b9ae;
+  --good-soft: rgba(70, 185, 174, 0.16);
+  --warn: #f2ca57;
+  --warn-soft: rgba(242, 202, 87, 0.14);
+  --bad: #ff6b6b;
+  --radius: 6px;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  --bg-image: url("https://optim.tildacdn.com/tild3366-3831-4561-a635-653930353135/-/format/webp/ChatGPT_Image_17__20.png.webp");
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -44,21 +29,30 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font: 15px/1.5 "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font: 15px/1.5 "Onest", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-feature-settings: "tnum" 1;
+  min-height: 100vh;
+}
+/* неоновые волны как на qbiq-music.ru, затемнённые для читаемости */
+body::before {
+  content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0.78) 45%, rgba(0, 0, 0, 0.9) 100%),
+    var(--bg-image) center / cover no-repeat,
+    #000;
 }
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
-h1, h2, h3 { line-height: 1.2; margin: 0; letter-spacing: -0.01em; }
-h1 { font-size: 26px; font-weight: 650; }
-h2 { font-size: 17px; font-weight: 620; }
+h1, h2, h3 { line-height: 1.2; margin: 0; letter-spacing: 0; font-family: "Unbounded", "Onest", system-ui, sans-serif; text-wrap: balance; }
+h1 { font-size: 26px; font-weight: 700; }
+h2 { font-size: 15px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
 .muted { color: var(--muted); }
 .small { font-size: 13px; }
 
 /* ---------- Шапка ---------- */
 .topbar {
   position: sticky; top: 0; z-index: 10;
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  background: rgba(0, 0, 1, 0.82);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--border);
 }
@@ -66,7 +60,10 @@ h2 { font-size: 17px; font-weight: 620; }
   max-width: 1120px; margin: 0 auto; padding: 0 16px;
   display: flex; align-items: center; gap: 24px; height: 60px;
 }
-.brand { font-weight: 700; color: var(--text); white-space: nowrap; display: flex; align-items: center; gap: 10px; }
+.brand { font-weight: 700; color: var(--text); white-space: nowrap; display: flex; align-items: center; gap: 12px; }
+.brand:hover { text-decoration: none; }
+.brand-logo { height: 30px; width: auto; display: block; }
+.brand-name { font-family: "Unbounded", "Onest", sans-serif; font-size: 12px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; padding-left: 12px; border-left: 1px solid var(--border); }
 .brand-mark {
   width: 28px; height: 28px; border-radius: 8px; background: var(--accent);
   display: grid; place-items: center; color: var(--accent-text); font-size: 14px;
@@ -228,3 +225,62 @@ dl.profile dd { margin: 0; font-weight: 540; overflow-wrap: anywhere; }
   tr.sub-row td:first-child { padding-left: 30px; }
   .hide-sm { display: none; }
 }
+
+/* ---------- Статистика ---------- */
+.grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 1000px) { .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .grid-4 { grid-template-columns: 1fr; } }
+.stat-lead { font-size: 18px; font-weight: 650; margin-top: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.platform-meta { grid-column: 1 / -1; margin-top: -1px; }
+.meter-inline { margin-top: 6px; max-width: 220px; }
+.dyn-legend { display: flex; gap: 8px 14px; align-items: center; font-size: 13px; color: var(--muted); margin-bottom: 10px; flex-wrap: wrap; }
+.dyn-legend .key { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: -8px; }
+.key-amount { background: var(--accent); }
+.key-streams { background: color-mix(in srgb, var(--accent) 35%, var(--surface-2)); }
+.dyn-chart { display: flex; gap: 10px; align-items: flex-end; height: 180px; overflow-x: auto; padding-bottom: 2px; }
+.dyn-col { flex: 1; min-width: 44px; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; border-radius: 8px; padding: 4px 2px 0; }
+.dyn-col:hover { text-decoration: none; background: var(--surface-2); color: var(--text); }
+.dyn-col.selected { background: var(--accent-soft); color: var(--text); font-weight: 600; }
+.dyn-bars { flex: 1; width: 100%; display: flex; align-items: flex-end; justify-content: center; gap: 3px; }
+.dyn-bars span { width: 40%; max-width: 18px; min-height: 3px; border-radius: 4px 4px 2px 2px; }
+.bar-amount { background: var(--accent); }
+.bar-streams { background: color-mix(in srgb, var(--accent) 35%, var(--surface-2)); }
+.dyn-label { white-space: nowrap; }
+table.data.compact td, table.data.compact th { padding-top: 9px; padding-bottom: 9px; }
+table.data tr.row-selected td { background: var(--accent-soft); }
+.show-sm { display: none; }
+@media (max-width: 700px) {
+  .show-sm { display: inline; }
+  table.data { font-size: 13px; }
+  table.data th, table.data td { padding-left: 10px; padding-right: 10px; }
+  table.data th { font-size: 11px; letter-spacing: .02em; }
+  .meter-inline { max-width: 80px; }
+}
+@media (max-width: 700px) { .card { padding: 16px; } .card.flush { padding: 0; } }
+
+/* ---------- Фирменные детали QBIQ ---------- */
+.card { backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+.stat-value { font-family: "Unbounded", "Onest", sans-serif; font-weight: 600; letter-spacing: -0.01em; }
+.btn { border-radius: 4px; background: rgba(255, 255, 255, 0.04); }
+.btn:hover { background: rgba(255, 255, 255, 0.1); }
+.btn-primary { background: var(--accent); }
+.btn-primary:hover { background: #f06a4c; }
+.nav a { border-radius: 4px; }
+.nav a.active { background: var(--accent-soft); border-color: transparent; box-shadow: none; color: var(--text); }
+.periods a { border-radius: 4px; background: rgba(0, 0, 0, 0.45); }
+.periods a.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.bars .bar { background: rgba(255, 255, 255, 0.14); }
+.bars a:hover .bar, .bars a.current .bar { background: var(--accent); }
+.key-streams, .bar-streams { background: var(--brand-teal); }
+.meter { background: rgba(255, 255, 255, 0.08); }
+.file-icon { background: var(--accent-soft); color: var(--accent); border-radius: 4px; }
+table.data th { background: rgba(255, 255, 255, 0.05); }
+tr.sub-row td { background: rgba(0, 0, 0, 0.35); }
+tfoot td { background: rgba(255, 255, 255, 0.06); }
+.field input, .search { background: rgba(0, 0, 0, 0.45); border-radius: 4px; }
+.comment { background: var(--accent-soft); border-left: 3px solid var(--accent); border-radius: 4px; }
+.viewas { background: var(--brand-yellow); color: #1a1a1a; }
+.login-card .brand { flex-direction: column; gap: 14px; }
+.login-card .brand-logo { height: 44px; }
+.login-card .brand-name { border-left: 0; padding-left: 0; }
+@media (max-width: 700px) { .brand-logo { height: 26px; } }
