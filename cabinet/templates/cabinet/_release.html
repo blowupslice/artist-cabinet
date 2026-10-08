@@ -1,0 +1,24 @@
+{% load cabinet_tags %}
+<article class="card release">
+  <div class="cover">{% if r.cover %}<img src="{% url 'release_cover' r.pk %}" alt="Обложка «{{ r.title }}»" loading="lazy">{% else %}<span>{% include "cabinet/_icon.html" with name="music" %}</span>{% endif %}</div>
+  <div class="release-main">
+    <div class="release-top">
+      <span class="badge {% if r.status == 'released' %}badge-good{% elif r.status == 'taken_down' %}badge-muted{% else %}badge-warn{% endif %}">{{ r.get_status_display }}</span>
+      <span class="muted small">{{ r.get_kind_display }}</span>
+    </div>
+    <h3 class="release-title">{{ r.title }}</h3>
+    <div class="muted small">{{ r.display_artists }}</div>
+    <div class="release-meta small">
+      {% if r.release_date %}<span>{% include "cabinet/_icon.html" with name="clock" %}{{ r.release_date|date:"j E Y" }}{% if r.is_upcoming %} · через {{ r.days_left }} {{ r.days_left|plural:"день,дня,дней" }}{% endif %}</span>{% endif %}
+      {% if r.presave_date and r.is_upcoming %}<span>Пресейв с {{ r.presave_date|date:"j E" }}</span>{% endif %}
+      {% if r.upc %}<span class="muted">UPC {{ r.upc }}</span>{% endif %}
+    </div>
+    {% if r.note %}<div class="comment" style="margin-top:10px">{{ r.note }}</div>{% endif %}
+    {% if r.smart_link %}
+    <div class="actions" style="margin-top:12px">
+      <a class="btn btn-sm btn-primary" href="{{ r.smart_link }}" target="_blank" rel="noopener">{% include "cabinet/_icon.html" with name="link" %}Смарт-ссылка</a>
+      <button class="btn btn-sm" type="button" data-copy="{{ r.smart_link }}">{% include "cabinet/_icon.html" with name="copy" %}Скопировать</button>
+    </div>
+    {% endif %}
+  </div>
+</article>
