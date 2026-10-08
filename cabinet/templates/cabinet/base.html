@@ -20,6 +20,7 @@
       <a href="{% url 'dashboard' %}" class="{% if nav == 'dashboard' %}active{% endif %}">Профиль</a>
       <a href="{% url 'finance' %}" class="{% if nav == 'finance' %}active{% endif %}">Финансы</a>
       <a href="{% url 'stats' %}" class="{% if nav == 'stats' %}active{% endif %}">Статистика</a>
+      <a href="{% url 'releases' %}" class="{% if nav == 'releases' %}active{% endif %}">Релизы</a>
       <a href="{% url 'account' %}" class="{% if nav == 'account' %}active{% endif %}">Настройки</a>
     </nav>
     <div class="user-chip">
@@ -32,6 +33,7 @@
   {% for m in messages %}<div class="alert alert-{{ m.tags }}">{{ m }}</div>{% endfor %}
   {% block content %}{% endblock %}
 </main>
+<script>document.querySelector('.nav a.active')?.scrollIntoView({inline: 'center', block: 'nearest'});</script>
 {% block scripts %}{% endblock %}
 </body>
 </html>
