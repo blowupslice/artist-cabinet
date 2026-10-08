@@ -82,6 +82,15 @@ class Artist(models.Model):
     address = models.CharField("Адрес (для акта)", max_length=400, blank=True)
     inn = models.CharField("ИНН (для акта)", max_length=20, blank=True)
     notes = models.TextField("Заметки (видны только вам)", blank=True)
+
+    # Реквизиты для выплат — артист заполняет сам в настройках кабинета
+    bank_recipient = models.CharField("Получатель (ФИО полностью)", max_length=300, blank=True)
+    bank_name = models.CharField("Банк", max_length=300, blank=True)
+    bank_bik = models.CharField("БИК", max_length=9, blank=True)
+    bank_account = models.CharField("Расчётный счёт", max_length=20, blank=True)
+    bank_corr_account = models.CharField("Корр. счёт", max_length=20, blank=True)
+    bank_updated_at = models.DateTimeField("Реквизиты обновлены", null=True, blank=True)
+
     created_at = models.DateTimeField("Создан", auto_now_add=True)
 
     class Meta:
@@ -95,6 +104,10 @@ class Artist(models.Model):
     @property
     def email(self):
         return self.user.email
+
+    @property
+    def has_bank_details(self):
+        return bool(self.bank_recipient and self.bank_bik and self.bank_account)
 
 
 def _upload_path(instance, filename, kind):
@@ -185,6 +198,7 @@ class Report(models.Model):
     class ActStatus(models.TextChoices):
         NONE = "none", "Акт не загружен"
         TO_SIGN = "to_sign", "Ожидает подписания"
+        REVIEW = "review", "На проверке"
         SIGNED = "signed", "Подписан"
 
     artist = models.ForeignKey(Artist, on_delete=models.CASCADE, related_name="reports", verbose_name="артист")
@@ -200,8 +214,9 @@ class Report(models.Model):
     act_file = models.FileField("Акт для подписания", upload_to=upload_act, blank=True)
     signed_act_file = models.FileField(
         "Подписанный акт", upload_to=upload_signed_act, blank=True,
-        help_text="Необязательно: скан акта, подписанного артистом.",
+        help_text="Скан или фото акта, подписанного артистом. Артист может загрузить его сам из кабинета.",
     )
+    signed_uploaded_at = models.DateTimeField("Подписанный акт загружен", null=True, blank=True)
     act_status = models.CharField("Статус акта", max_length=10, choices=ActStatus.choices, default=ActStatus.TO_SIGN)
     act_date = models.DateField("Дата акта", null=True, blank=True, help_text="Если пусто — дата загрузки отчёта.")
     royalty_rate = models.DecimalField(
@@ -255,7 +270,9 @@ class Report(models.Model):
 
     def save(self, *args, **kwargs):
         # Акт формируется автоматически, поэтому он всегда есть и ждёт подписи
-        if self.signed_act_file:
+        # Скан от админа сразу считается принятым; скан от артиста ждёт проверки
+        if self.signed_act_file and self.act_status == self.ActStatus.TO_SIGN \
+                and not getattr(self, "_from_artist", False):
             self.act_status = self.ActStatus.SIGNED
         elif self.act_status == self.ActStatus.NONE:
             self.act_status = self.ActStatus.TO_SIGN
@@ -304,6 +321,7 @@ class RoyaltyLine(models.Model):
     platform = models.CharField("Площадка", max_length=200)
     country = models.CharField("Страна", max_length=100, blank=True)
     rights_type = models.CharField("Тип прав", max_length=100, blank=True)
+    usage_type = models.CharField("Вид использования", max_length=100, blank=True)
     quantity = models.BigIntegerField("Прослушивания", default=0)
     gross = models.DecimalField("Доход лейбла", max_digits=18, decimal_places=6, default=0)
     amount = models.DecimalField("Доля артиста", max_digits=18, decimal_places=6, default=0)
@@ -315,3 +333,114 @@ class RoyaltyLine(models.Model):
 
     def __str__(self):
         return f"{self.track} / {self.platform}: {self.amount}"
+
+
+# ---------------------------------------------------------------------------
+# Релизы
+# ---------------------------------------------------------------------------
+
+def upload_cover(instance, filename):
+    return _upload_path(instance, filename, "covers")
+
+
+class Release(models.Model):
+    class Status(models.TextChoices):
+        PREPARING = "preparing", "Готовится"
+        MODERATION = "moderation", "На модерации"
+        SCHEDULED = "scheduled", "Отгружен, ждёт даты"
+        RELEASED = "released", "Вышел"
+        TAKEN_DOWN = "taken_down", "Снят с площадок"
+
+    class Kind(models.TextChoices):
+        SINGLE = "single", "Сингл"
+        EP = "ep", "EP"
+        ALBUM = "album", "Альбом"
+
+    artist = models.ForeignKey(Artist, on_delete=models.CASCADE, related_name="releases", verbose_name="артист")
+    title = models.CharField("Название", max_length=300)
+    artists_line = models.CharField("Исполнители (как на площадках)", max_length=300, blank=True,
+                                    help_text="Например: Эсчевский feat. Кто-то. Если пусто — имя артиста.")
+    kind = models.CharField("Тип", max_length=10, choices=Kind.choices, default=Kind.SINGLE)
+    release_date = models.DateField("Дата релиза", null=True, blank=True)
+    status = models.CharField("Статус", max_length=12, choices=Status.choices, default=Status.PREPARING)
+    upc = models.CharField("UPC", max_length=20, blank=True)
+    isrc = models.CharField("ISRC", max_length=100, blank=True, help_text="Можно несколько через запятую")
+    smart_link = models.URLField("Смарт-ссылка", blank=True, help_text="Например: https://band.link/…")
+    presave_date = models.DateField("Пресейв с", null=True, blank=True)
+    cover = models.FileField("Обложка (jpg/png)", upload_to=upload_cover, blank=True)
+    cover_url = models.URLField("…или ссылка на обложку", blank=True,
+                                help_text="Вставьте ссылку на картинку — сервер сам скачает её в «Обложку».")
+    note = models.CharField("Заметка для артиста", max_length=300, blank=True,
+                            help_text="Например: «Питчинг в Яндекс Музыку отправлен»")
+    is_published = models.BooleanField("Показывать артисту", default=True)
+    created_at = models.DateTimeField("Добавлен", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "релиз"
+        verbose_name_plural = "релизы"
+        ordering = ["-release_date", "-created_at"]
+
+    def __str__(self):
+        return f"{self.display_artists} — {self.title}"
+
+    @property
+    def display_artists(self):
+        return self.artists_line or self.artist.name
+
+    @property
+    def days_left(self):
+        if not self.release_date:
+            return None
+        return (self.release_date - timezone.localdate()).days
+
+    @property
+    def is_upcoming(self):
+        d = self.days_left
+        return d is not None and d > 0 and self.status != self.Status.TAKEN_DOWN
+
+
+# ---------------------------------------------------------------------------
+# Свежая статистика прослушиваний (выгрузки из DataLens / кабинетов дистрибьюторов)
+# ---------------------------------------------------------------------------
+
+class StreamStat(models.Model):
+    """Прослушивания трека на площадке за период. Для ежедневных данных начало = конец."""
+
+    artist = models.ForeignKey(Artist, on_delete=models.CASCADE, related_name="stream_stats")
+    period_start = models.DateField("С")
+    period_end = models.DateField("По")
+    track = models.CharField("Трек", max_length=500)
+    platform = models.CharField("Площадка", max_length=200, blank=True)
+    streams = models.PositiveIntegerField("Прослушивания", default=0)
+    source = models.CharField("Источник", max_length=100, blank=True)
+    uploaded_at = models.DateTimeField("Загружено", auto_now=True)
+
+    class Meta:
+        verbose_name = "прослушивания за период"
+        verbose_name_plural = "свежая статистика прослушиваний"
+        ordering = ["-period_end", "-streams"]
+        indexes = [models.Index(fields=["artist", "period_end"])]
+        constraints = [models.UniqueConstraint(fields=["artist", "period_start", "period_end", "track", "platform"],
+                                               name="uniq_stream_stat")]
+
+    @property
+    def days(self):
+        return (self.period_end - self.period_start).days + 1
+
+
+class PlaylistPlacement(models.Model):
+    artist = models.ForeignKey(Artist, on_delete=models.CASCADE, related_name="playlist_placements")
+    track = models.CharField("Трек", max_length=500)
+    platform = models.CharField("Площадка", max_length=200)
+    playlist = models.CharField("Плейлист", max_length=300)
+    peak_position = models.PositiveIntegerField("Пиковая позиция", null=True, blank=True)
+    days = models.PositiveIntegerField("Дней в плейлисте", default=0)
+    first_date = models.DateField("Первая дата", null=True, blank=True)
+    last_date = models.DateField("Последняя дата", null=True, blank=True)
+
+    class Meta:
+        verbose_name = "попадание в плейлист"
+        verbose_name_plural = "попадания в плейлисты"
+        ordering = ["-last_date", "peak_position"]
+        constraints = [models.UniqueConstraint(fields=["artist", "track", "platform", "playlist"],
+                                               name="uniq_playlist_placement")]
