@@ -118,8 +118,7 @@ def dashboard(request):
     upcoming = sorted([r for r in releases if r.is_upcoming], key=lambda r: r.release_date)
     latest_release = next((r for r in releases if not r.is_upcoming and r.status == Release.Status.RELEASED), None)
     playlists = list(artist.playlist_placements.all()[:5])
-    from .streams import recent_summary
-    fresh = recent_summary(artist)
+    fresh = None  # «Свежие прослушивания» пока скрыты
     todo = []
     if payout.report and payout.report.act_status == Report.ActStatus.TO_SIGN:
         todo.append(("act", payout.report))
@@ -210,20 +209,36 @@ def finance(request, slug=None):
     })
 
 
+def _prev_label(sel, prev_reports):
+    if not prev_reports:
+        return ""
+    if not sel.isdigit():
+        return "к " + prev_reports[0].period_short
+    qs = sorted(r.quarter for r in prev_reports)
+    year = prev_reports[0].year
+    if len(qs) == 4:
+        return f"к {year} году"
+    if len(qs) == 1:
+        return f"к Q{qs[0]} {year}"
+    return f"к Q{qs[0]}–Q{qs[-1]} {year}"
+
+
 @artist_required
 def stats(request):
     artist = request.artist
     reports = list(published_reports(artist))
     from .streams import recent_summary
-    extra = {"fresh": recent_summary(artist), "playlists": list(artist.playlist_placements.all()[:50])}
+    # Блок «Свежие прослушивания» пока скрыт (данные в админке сохраняются)
+    extra = {"fresh": None, "playlists": list(artist.playlist_placements.all()[:50])}
     if not reports:
         return render(request, "cabinet/stats.html", {"artist": artist, "reports": [], "nav": "stats", **extra})
 
     years = sorted({r.year for r in reports}, reverse=True)
-    options = [("all", "За всё время")] + [(str(y), f"{y} год") for y in years] + [(r.slug, r.period_short) for r in reports]
-    sel = request.GET.get("p", "all")
+    # «За всё время» пока убрано — по умолчанию открывается последний год
+    options = [(str(y), f"{y} год") for y in years] + [(r.slug, r.period_short) for r in reports]
+    sel = request.GET.get("p") or str(years[0])
     if sel not in {k for k, _ in options}:
-        sel = "all"
+        sel = str(years[0])
 
     prev_reports = None
     if sel == "all":
@@ -233,7 +248,9 @@ def stats(request):
         y = int(sel)
         selected = [r for r in reports if r.year == y]
         title = f"{y} год"
-        prev = [r for r in reports if r.year == y - 1]
+        # сравниваем с теми же кварталами прошлого года, а не с целым годом
+        qs_sel = {r.quarter for r in selected}
+        prev = [r for r in reports if r.year == y - 1 and r.quarter in qs_sel]
         prev_reports = prev or None
     else:
         idx = next(i for i, r in enumerate(reports) if r.slug == sel)
@@ -286,8 +303,7 @@ def stats(request):
         "delta_amount": pct_change(total, prev_total) if prev_total else None,
         "delta_streams": pct_change(streams, prev_streams) if prev_streams else None,
         "has_prev": bool(prev_reports),
-        "prev_label": ("к " + prev_reports[0].period_short) if prev_reports and len(prev_reports) == 1 and not sel.isdigit()
-                      else (f"к {int(sel) - 1} году" if prev_reports else ""),
+        "prev_label": _prev_label(sel, prev_reports),
         "platforms": platforms,
         "tracks": tracks,
         "countries": countries if has_countries else [],
