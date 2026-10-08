@@ -157,3 +157,84 @@ class PasswordChangeFormRu(forms.Form):
         self.user.set_password(self.cleaned_data["new_password1"])
         self.user.save()
         return self.user
+
+
+def _digits(value):
+    return "".join(ch for ch in (value or "") if ch.isdigit())
+
+
+class BankDetailsForm(forms.ModelForm):
+    """Реквизиты для выплат — артист заполняет сам."""
+
+    # Поля пошире модели: люди вставляют номера с пробелами, лишнее убираем в clean_*
+    inn = forms.CharField(label="ИНН получателя", max_length=40,
+                          widget=forms.TextInput(attrs={"inputmode": "numeric", "autocomplete": "off"}))
+    bank_bik = forms.CharField(label="БИК", max_length=40,
+                               help_text="9 цифр — есть в приложении банка в разделе «Реквизиты»",
+                               widget=forms.TextInput(attrs={"inputmode": "numeric", "autocomplete": "off"}))
+    bank_account = forms.CharField(label="Расчётный счёт", max_length=60, help_text="20 цифр, начинается с 408…",
+                                   widget=forms.TextInput(attrs={"inputmode": "numeric", "autocomplete": "off"}))
+    bank_corr_account = forms.CharField(label="Корр. счёт", max_length=60, required=False,
+                                        widget=forms.TextInput(attrs={"inputmode": "numeric", "autocomplete": "off"}))
+
+    class Meta:
+        model = Artist
+        fields = ["bank_recipient", "inn", "address", "bank_name", "bank_bik", "bank_account", "bank_corr_account"]
+        labels = {"inn": "ИНН получателя", "address": "Адрес регистрации"}
+        help_texts = {
+            "bank_recipient": "Как в паспорте, например: Иванов Иван Иванович",
+            "address": "Нужен для акта",
+            "bank_bik": "9 цифр — есть в приложении банка в разделе «Реквизиты»",
+            "bank_account": "20 цифр, начинается с 408…",
+        }
+        widgets = {
+            "bank_bik": forms.TextInput(attrs={"inputmode": "numeric", "autocomplete": "off"}),
+            "bank_account": forms.TextInput(attrs={"inputmode": "numeric", "autocomplete": "off"}),
+            "bank_corr_account": forms.TextInput(attrs={"inputmode": "numeric", "autocomplete": "off"}),
+            "inn": forms.TextInput(attrs={"inputmode": "numeric", "autocomplete": "off"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for name in ("bank_recipient", "inn", "bank_name", "bank_bik", "bank_account"):
+            self.fields[name].required = True
+
+    def clean_inn(self):
+        v = _digits(self.cleaned_data.get("inn"))
+        if len(v) not in (10, 12):
+            raise forms.ValidationError("ИНН — 12 цифр (для ИП и физлиц) или 10 цифр (для компаний)")
+        return v
+
+    def clean_bank_bik(self):
+        v = _digits(self.cleaned_data.get("bank_bik"))
+        if len(v) != 9:
+            raise forms.ValidationError("БИК — ровно 9 цифр")
+        return v
+
+    def clean_bank_account(self):
+        v = _digits(self.cleaned_data.get("bank_account"))
+        if len(v) != 20:
+            raise forms.ValidationError("Номер счёта — ровно 20 цифр")
+        return v
+
+    def clean_bank_corr_account(self):
+        v = _digits(self.cleaned_data.get("bank_corr_account"))
+        if v and len(v) != 20:
+            raise forms.ValidationError("Корр. счёт — 20 цифр, или оставьте пустым")
+        return v
+
+
+SIGNED_ACT_EXT = (".pdf", ".jpg", ".jpeg", ".png", ".heic", ".webp")
+
+
+class SignedActForm(forms.Form):
+    file = forms.FileField(label="Подписанный акт")
+
+    def clean_file(self):
+        import os
+        f = self.cleaned_data["file"]
+        if os.path.splitext(f.name)[1].lower() not in SIGNED_ACT_EXT:
+            raise forms.ValidationError("Подойдёт PDF или фото (JPG, PNG, HEIC)")
+        if f.size > 15 * 1024 * 1024:
+            raise forms.ValidationError("Файл больше 15 МБ — сожмите фото или отправьте PDF")
+        return f
