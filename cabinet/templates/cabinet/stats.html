@@ -10,8 +10,11 @@
 </div>
 
 {% if not reports %}
-<div class="card"><p class="empty" style="padding:0">Статистика появится, когда менеджер загрузит первый квартальный отчёт.</p></div>
+{% include "cabinet/_fresh.html" %}
+{% if not fresh %}<div class="card"><p class="empty" style="padding:0">Статистика появится, когда менеджер загрузит первый квартальный отчёт.</p></div>{% endif %}
 {% else %}
+
+{% include "cabinet/_fresh.html" %}
 
 <nav class="periods" style="margin-bottom:18px" aria-label="Период">
   {% for key, label in options %}<a href="?p={{ key }}" class="{% if key == sel %}active{% endif %}">{{ label }}</a>{% endfor %}
