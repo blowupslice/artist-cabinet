@@ -1,0 +1,32 @@
+{% extends "admin/base_site.html" %}
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Начало</a> ›
+  <a href="{% url 'admin:cabinet_streamstat_changelist' %}">Свежая статистика</a> ›
+  Загрузка
+</div>
+{% endblock %}
+{% block content %}
+<div id="content-main">
+  <p><b>Прослушивания.</b> В DataLens у нужного графика нажмите «…» → «Сохранить как» → XLSX и загрузите файл сюда.
+     Подойдёт и любая таблица с колонками <i>Дата · Трек · Площадка · Прослушивания</i>.
+     Если даты в файле нет (например, сводка за неделю из кабинета дистрибьютора) — укажите период «с/по».</p>
+  <p><b>Плейлисты.</b> Таблица «Попадания в плейлисты» из DataLens: Трек · DSP · Плейлист · Пиковая позиция ·
+     Количество дней · Первая и последняя дата.</p>
+  <p>Если артист не выбран, строки разложатся по артистам кабинета по названию «Артист - Трек» (фиты — всем участникам).
+     Повторная загрузка того же периода обновляет цифры, а не дублирует их.</p>
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <fieldset class="module aligned">
+      {% for f in form %}
+      <div class="form-row">
+        {{ f.errors }}
+        <div class="flex-container">{{ f.label_tag }} {{ f }}</div>
+        {% if f.help_text %}<div class="help">{{ f.help_text }}</div>{% endif %}
+      </div>
+      {% endfor %}
+    </fieldset>
+    <div class="submit-row"><input type="submit" class="default" value="Загрузить"></div>
+  </form>
+</div>
+{% endblock %}
