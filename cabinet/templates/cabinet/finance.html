@@ -24,7 +24,7 @@
   {% for r in reports %}<a href="{% url 'finance_period' r.slug %}" class="{% if r.pk == report.pk %}active{% endif %}">{{ r.period_short }}</a>{% endfor %}
 </nav>
 
-<div class="grid grid-3" style="margin-bottom:16px">
+<div class="grid grid-2-even" style="margin-bottom:16px">
   <div class="card">
     <div class="stat-label">Ваше вознаграждение за квартал</div>
     <div class="stat-value">{{ report.total_amount|money:report.currency }}</div>
@@ -37,19 +37,67 @@
     <div class="stat-value">{{ report.total_quantity|num }}</div>
     <div class="stat-sub">Треков: {{ by_track|length }} · площадок: {{ by_platform|length }}</div>
   </div>
-  <div class="card">
-    <div class="stat-label">Акт</div>
-    <div class="stat-value" style="font-size:20px;padding-top:6px">
-      {% if report.act_status == "signed" %}<span class="badge badge-good" style="font-size:14px">Подписан</span>
-      {% elif report.act_status == "to_sign" %}<span class="badge badge-warn" style="font-size:14px">Ожидает подписания</span>
-      {% else %}<span class="badge badge-muted" style="font-size:14px">Ещё не загружен</span>{% endif %}
+</div>
+
+<section class="card sign-card" id="sign" style="margin-bottom:16px">
+  <div class="card-head"><h2>Акт за {{ report.period_short }}</h2>
+    {% if report.act_status == "signed" %}<span class="badge badge-good">Принят</span>
+    {% elif report.act_status == "review" %}<span class="badge badge-warn">На проверке</span>
+    {% else %}<span class="badge badge-warn">Ждёт вашей подписи</span>{% endif %}
+  </div>
+  <div class="sign-grid">
+    <div class="sign-sum">
+      <div class="row"><span class="muted">Начислено за квартал</span><b>{{ act.accrued|money:"RUB" }}</b></div>
+      {% if act.carry_prev > 0 %}<div class="row"><span class="muted">Остаток с прошлых периодов</span><b>{{ act.carry_prev|money:"RUB" }}</b></div>{% endif %}
+      <div class="row total"><span>К выплате по акту</span><b>{{ act.payable_now|money:"RUB" }}</b></div>
+      {% if act.payable_now == 0 %}<div class="small muted">Сумма меньше {{ act.threshold|money:"RUB" }} — она перейдёт в следующий акт. Подписать акт всё равно нужно: он фиксирует начисления.</div>{% endif %}
     </div>
-    <div class="stat-sub">
-      {% if report.signed_act_file %}<a href="{% url 'download_report_file' report.pk 'signed-act' %}">Скачать подписанный экземпляр</a>
-      {% else %}Скачайте, подпишите и отправьте менеджеру{% endif %}
+    <div class="sign-steps">
+      {% if report.act_status == "signed" %}
+        <p class="muted small" style="margin:0 0 10px">Акт подписан и принят. Спасибо!</p>
+        <div class="actions">
+          {% if report.signed_act_file %}<a class="btn btn-sm" href="{% url 'download_report_file' report.pk 'signed-act' %}">{% include "cabinet/_icon.html" with name="download" %}Подписанный экземпляр</a>{% endif %}
+          <a class="btn btn-sm" href="{% url 'download_report_file' report.pk 'act' %}">{% include "cabinet/_icon.html" with name="doc" %}Акт (PDF)</a>
+        </div>
+      {% else %}
+        <ol class="steps compact">
+          <li><a href="{% url 'download_report_file' report.pk 'act' %}">Скачайте акт (PDF)</a></li>
+          <li>Подпишите: от руки или электронной подписью</li>
+          <li>Загрузите скан или фото сюда</li>
+        </ol>
+        {% if report.act_status == "review" %}
+          <p class="small muted" style="margin:0 0 10px">Файл получен {{ report.signed_uploaded_at|date:"j E в H:i" }} — менеджер проверяет. Ошиблись файлом? Загрузите новый.</p>
+        {% endif %}
+        {% if request.viewing_as %}
+          <p class="small muted">В режиме просмотра за артиста загрузка отключена.</p>
+        {% else %}
+        <form class="upload" method="post" enctype="multipart/form-data" action="{% url 'upload_signed_act' report.pk %}">
+          {% csrf_token %}
+          <label class="drop">
+            <input type="file" name="file" accept=".pdf,.jpg,.jpeg,.png,.heic,.webp,image/*,application/pdf" required>
+            <span class="drop-text">{% include "cabinet/_icon.html" with name="upload" %}<span data-label>Выберите файл или сфотографируйте акт</span></span>
+          </label>
+          <button class="btn btn-primary" type="submit">Отправить подписанный акт</button>
+        </form>
+        {% endif %}
+      {% endif %}
     </div>
   </div>
+</section>
+
+{% if leaders.track or rights or usage %}
+<div class="grid grid-4" style="margin-bottom:16px">
+  {% if leaders.track %}<div class="card"><div class="stat-label">Лучший трек</div><div class="stat-lead">{{ leaders.track.track }}</div><div class="stat-sub">{{ leaders.track.amount|money:report.currency }} · {{ leaders.track.share|pct }}</div></div>{% endif %}
+  {% if leaders.platform %}<div class="card"><div class="stat-label">Лучшая площадка</div><div class="stat-lead">{{ leaders.platform.platform }}</div><div class="stat-sub">{{ leaders.platform.amount|money:report.currency }} · {{ leaders.platform.share|pct }}</div></div>{% endif %}
+  {% if rights %}<div class="card"><div class="stat-label">Тип прав</div>
+    {% for x in rights %}<div class="split-row"><span>{{ x.name }}</span><b>{% if x.share < 1 %}&lt;1{% else %}{{ x.share|floatformat:"0" }}{% endif %}%</b></div>{% endfor %}
+    <div class="split-bar">{% for x in rights %}<span class="c{{ forloop.counter }}" style="width: {{ x.share|cssnum }}%"></span>{% endfor %}</div></div>{% endif %}
+  {% if usage %}<div class="card"><div class="stat-label">Откуда доход</div>
+    {% for x in usage %}<div class="split-row"><span>{{ x.name }}</span><b>{% if x.share < 1 %}&lt;1{% else %}{{ x.share|floatformat:"0" }}{% endif %}%</b></div>{% endfor %}
+    <div class="split-bar">{% for x in usage %}<span class="c{{ forloop.counter }}" style="width: {{ x.share|cssnum }}%"></span>{% endfor %}</div></div>
+  {% elif leaders.country %}<div class="card"><div class="stat-label">Главная страна</div><div class="stat-lead">{{ leaders.country.name }}</div><div class="stat-sub">{{ leaders.country.share|pct }} дохода</div></div>{% endif %}
 </div>
+{% endif %}
 
 {% if report.comment %}<div class="comment" style="margin:0 0 16px">{{ report.comment|linebreaksbr }}</div>{% endif %}
 
@@ -102,6 +150,12 @@
 {% endblock %}
 
 {% block scripts %}
+<script>
+document.querySelectorAll('.drop input[type=file]').forEach(inp => inp.addEventListener('change', () => {
+  const l = inp.closest('.drop').querySelector('[data-label]');
+  if (inp.files[0]) { l.textContent = inp.files[0].name; inp.closest('.drop').classList.add('has-file'); }
+}));
+</script>
 <script>
 (function () {
   const table = document.getElementById('tracks');
