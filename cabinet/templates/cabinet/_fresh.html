@@ -1,0 +1,38 @@
+{% load cabinet_tags %}
+{% if fresh %}
+<section class="card" id="fresh" style="margin-bottom:16px">
+  <div class="card-head"><h2>Свежие прослушивания</h2><span class="muted small">обновлено {{ fresh.updated|date:"j E" }} · информационно, деньги — в квартальном отчёте</span></div>
+  {% if fresh.daily %}
+  <div class="stat-label">За последние {{ fresh.daily|length }} {{ fresh.daily|length|plural:"день,дня,дней" }}: {{ fresh.daily_total|num }}</div>
+  <div class="daily">{% for d in fresh.daily %}<span title="{{ d.date|date:'j E' }}: {{ d.streams|num }}" style="height: {{ d.bar|cssnum }}%"></span>{% endfor %}</div>
+  {% endif %}
+  <div class="grid grid-2-even">
+  {% for b in fresh.blocks %}
+    <div>
+      <div class="stat-label">{{ b.start|date:"j E" }} — {{ b.end|date:"j E Y" }} · {{ b.days }} {{ b.days|plural:"день,дня,дней" }}</div>
+      <div class="stat-value">{{ b.total|num }}</div>
+      {% for p in b.platforms %}
+      <div class="platform-row">
+        <div class="platform-name">{{ p.name }} <span class="muted small">· {{ p.share|floatformat:"0" }}%</span></div>
+        <div class="platform-amount">{{ p.streams|num }}</div>
+        <div class="meter"><span style="width: {{ p.bar|cssnum }}%"></span></div>
+      </div>
+      {% endfor %}
+      {% if b.tracks|length > 1 %}<div class="small muted" style="margin-top:8px">{% for t, n in b.tracks|slice:":5" %}{{ t }} — {{ n|num }}{% if not forloop.last %} · {% endif %}{% endfor %}</div>{% endif %}
+    </div>
+  {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{% if playlists %}
+<section class="card flush" id="playlists" style="margin-bottom:16px">
+  <div class="card-head"><h2>Плейлисты</h2><span class="muted small">куда попадали ваши треки</span></div>
+  <div class="table-scroll" style="margin-top:12px">
+    <table class="data">
+      <thead><tr><th>Плейлист</th><th class="hide-sm">Трек</th><th>Площадка</th><th class="r">Лучшая позиция</th><th class="r">Дней</th><th class="r hide-sm">Последний раз</th></tr></thead>
+      <tbody>{% for p in playlists %}<tr><td><strong>{{ p.playlist }}</strong><div class="muted small show-sm">{{ p.track }}</div></td><td class="hide-sm">{{ p.track }}</td><td>{{ p.platform }}</td><td class="r">{{ p.peak_position|default:"—" }}</td><td class="r">{{ p.days }}</td><td class="r hide-sm">{{ p.last_date|date:"d.m.Y" }}</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
