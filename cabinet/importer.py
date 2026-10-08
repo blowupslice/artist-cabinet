@@ -41,6 +41,10 @@ COLUMN_ALIASES = {
     "isrc": ["isrc", "код isrc"],
     "country": ["страна", "территория", "регион", "country", "territory", "region", "country code"],
     "rights_type": ["тип прав", "вид прав", "права", "rights type", "right type", "rights"],
+    "usage_type": [
+        "вид использования контента", "вид использования", "тип использования", "модель использования",
+        "usage type", "sale type", "transaction type", "use type",
+    ],
     "period": [
         "период использования", "период продаж", "месяц использования", "отчетный месяц", "период", "месяц",
         "usage period", "sales period", "sale month", "reporting period", "period", "month",
@@ -75,7 +79,7 @@ def detect_columns(header_row):
     used = set()
     # 1) точные совпадения, 2) заголовок начинается с варианта / содержит его
     for strict in (True, False):
-        for field in ("amount", "quantity", "isrc", "period", "rights_type", "track", "platform", "country"):
+        for field in ("amount", "quantity", "isrc", "period", "usage_type", "rights_type", "track", "platform", "country"):
             if field in found:
                 continue
             for alias in aliases[field]:
@@ -258,11 +262,12 @@ def _collect(rows, cols):
         country = str(_cell(row, cols.get("country")) or "").strip()[:100]
         qty = parse_number(_cell(row, cols.get("quantity"))) or Decimal(0)
         rights = str(_cell(row, cols.get("rights_type")) or "").strip()[:100]
+        usage = str(_cell(row, cols.get("usage_type")) or "").strip()[:100]
 
-        key = (track[:500], platform[:200], country, isrc, rights)
+        key = (track[:500], platform[:200], country, isrc, rights, usage)
         item = acc.setdefault(key, {
             "track": key[0], "platform": key[1], "country": country, "isrc": isrc,
-            "rights_type": rights, "quantity": 0, "amount": Decimal(0),
+            "rights_type": rights, "usage_type": usage, "quantity": 0, "amount": Decimal(0),
         })
         item["quantity"] += int(qty)
         item["amount"] += amount
