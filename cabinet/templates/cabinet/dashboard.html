@@ -10,22 +10,71 @@
   {% if latest %}<a class="btn btn-primary" href="{% url 'finance' %}">Открыть финансовый отчёт</a>{% endif %}
 </div>
 
-<div class="grid grid-3" style="margin-bottom:16px">
+{% if todo %}
+<section class="todo">
+  <div class="todo-title">Что нужно сделать</div>
+  {% for kind, r in todo %}
+  <div class="todo-item">
+    {% if kind == "act" %}
+      <span class="file-icon">{% include "cabinet/_icon.html" with name="pen" %}</span>
+      <div class="file-main"><b>Подпишите акт за {{ r.period_label }}</b>
+        <div class="small muted">Без подписанного акта мы не можем отправить выплату {{ payout.payable_now|money:"RUB" }}</div></div>
+      <a class="btn btn-sm btn-primary" href="{% url 'finance_period' r.slug %}#sign">Подписать</a>
+    {% elif kind == "bank" %}
+      <span class="file-icon">{% include "cabinet/_icon.html" with name="card" %}</span>
+      <div class="file-main"><b>Укажите реквизиты для выплат</b>
+        <div class="small muted">Счёт, на который мы будем переводить деньги. Займёт 2 минуты.</div></div>
+      <a class="btn btn-sm" href="{% url 'account' %}?tab=bank#bank">Заполнить</a>
+    {% endif %}
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+{% if reports_count %}{% include "cabinet/_payout.html" %}{% endif %}
+
+<div class="grid grid-3" style="margin:16px 0">
   <div class="card">
     <div class="stat-label">Последний квартал{% if latest %} · {{ latest.period_label }}{% endif %}</div>
     <div class="stat-value">{% if latest %}{{ latest.total_amount|money:latest.currency }}{% else %}—{% endif %}</div>
     <div class="stat-sub">{% if latest %}{{ latest.total_quantity|num }} прослушиваний{% else %}Отчётов пока нет{% endif %}</div>
   </div>
+  {% if fresh and fresh.blocks %}
+  {% with b=fresh.blocks.0 %}
+  <a class="card card-link" href="{% url 'stats' %}#fresh">
+    <div class="stat-label">Прослушивания за {{ b.days }} {{ b.days|plural:"день,дня,дней" }}</div>
+    <div class="stat-value">{{ b.total|num }}</div>
+    <div class="stat-sub">{{ b.start|date:"j E" }} — {{ b.end|date:"j E" }}{% if b.platforms %} · больше всего: {{ b.platforms.0.name }}{% endif %}</div>
+  </a>
+  {% endwith %}
+  {% else %}
   <div class="card">
     <div class="stat-label">Всего начислено вам</div>
     <div class="stat-value">{{ total_all|money:currency }}</div>
     <div class="stat-sub">Кварталов в кабинете: {{ reports_count }}</div>
   </div>
+  {% endif %}
+  {% if upcoming %}
+  {% with r=upcoming.0 %}
+  <a class="card card-link" href="{% url 'releases' %}">
+    <div class="stat-label">До релиза «{{ r.title }}»</div>
+    <div class="stat-value">{{ r.days_left }} {{ r.days_left|plural:"день,дня,дней" }}</div>
+    <div class="stat-sub">{{ r.release_date|date:"j E Y" }} · {{ r.get_status_display|lower }}</div>
+  </a>
+  {% endwith %}
+  {% elif latest_release %}
+  <a class="card card-link" href="{% url 'releases' %}">
+    <div class="stat-label">Последний релиз</div>
+    <div class="stat-lead" style="margin-top:6px">{{ latest_release.title }}</div>
+    <div class="stat-sub">{{ latest_release.release_date|date:"j E Y" }}{% if latest_release.smart_link %} · есть смарт-ссылка{% endif %}</div>
+  </a>
+  {% else %}
   <div class="card">
     <div class="stat-label">Акты на подпись</div>
     <div class="stat-value">{{ to_sign|length }}</div>
-    <div class="stat-sub">{% if to_sign %}Скачайте, подпишите и отправьте менеджеру{% else %}Всё подписано{% endif %}</div>
+    <div class="stat-sub">{% if to_sign %}Скачайте, подпишите и загрузите в «Финансах»{% else %}Всё подписано{% endif %}</div>
   </div>
+  {% endif %}
 </div>
 
 <div class="grid grid-2">
@@ -36,6 +85,7 @@
       <div class="bars">
         {% for r in history %}
         <a href="{% url 'finance_period' r.slug %}" title="{{ r.period_label }}: {{ r.total_amount|money:r.currency }}" class="{% if forloop.last %}current{% endif %}">
+          <span class="bar-val">{{ r.total_amount|floatformat:"0" }}</span>
           <span class="bar" style="height: {{ r.bar|cssnum }}%"></span>
           <span>{{ r.period_short }}</span>
         </a>
@@ -44,15 +94,16 @@
     </section>
     {% endif %}
 
-    {% if to_sign %}
+    {% if playlists %}
     <section class="card">
-      <div class="card-head"><h2>Акты на подпись</h2></div>
+      <div class="card-head"><h2>Ваши треки в плейлистах</h2><a class="small" href="{% url 'stats' %}#playlists">Все</a></div>
       <ul class="files">
-        {% for r in to_sign %}
+        {% for p in playlists %}
         <li>
-          <span class="file-icon">{% include "cabinet/_icon.html" with name="pen" %}</span>
-          <div class="file-main"><div class="file-title">Акт за {{ r.period_label }}</div><div class="muted small">{{ r.total_amount|money:r.currency }}</div></div>
-          <a class="btn btn-sm" href="{% url 'download_report_file' r.pk 'act' %}">{% include "cabinet/_icon.html" with name="download" %}Скачать</a>
+          <span class="file-icon">{% include "cabinet/_icon.html" with name="list" %}</span>
+          <div class="file-main"><div class="file-title">{{ p.playlist }}</div>
+            <div class="muted small">{{ p.track }} · {{ p.platform }}{% if p.peak_position %} · лучшая позиция {{ p.peak_position }}{% endif %}</div></div>
+          <span class="muted small">{{ p.days }} {{ p.days|plural:"день,дня,дней" }}</span>
         </li>
         {% endfor %}
       </ul>
@@ -87,6 +138,8 @@
       {% if artist.legal_name %}<dt>ФИО / компания</dt><dd>{{ artist.legal_name }}</dd>{% endif %}
       <dt>Email</dt><dd>{{ artist.user.email }}</dd>
       {% if artist.phone %}<dt>Телефон</dt><dd>{{ artist.phone }}</dd>{% endif %}
+      <dt>Ваша доля</dt><dd>{{ artist.royalty_rate|floatformat:"-2" }}% дохода лейбла</dd>
+      <dt>Выплаты на</dt><dd>{% if artist.has_bank_details %}{{ artist.bank_name }} ··{{ artist.bank_account|slice:"-4:" }}{% else %}<a href="{% url 'account' %}?tab=bank#bank">указать реквизиты</a>{% endif %}</dd>
       <dt>В кабинете с</dt><dd>{{ artist.created_at|date:"j E Y" }}</dd>
     </dl>
     <p class="muted small" style="margin:18px 0 0">Если данные изменились, сообщите менеджеру{% if SUPPORT_CONTACT %}: {{ SUPPORT_CONTACT }}{% endif %}.</p>
