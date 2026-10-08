@@ -10,8 +10,9 @@ from django.utils.safestring import mark_safe
 from django.contrib.auth.forms import UserCreationForm, UserChangeForm
 
 from .forms import ArtistAdminForm, ReportAdminForm
+from .fetch import fetch_cover
 from .importer import ImportError_, parse_report
-from .models import Artist, Contract, LabelSettings, Report, User
+from .models import Artist, Contract, LabelSettings, PlaylistPlacement, Release, Report, StreamStat, User
 
 admin.site.site_header = f"{settings.SITE_NAME} — управление"
 admin.site.site_title = settings.SITE_NAME
@@ -39,8 +40,9 @@ def act_link(obj):
 def report_summary(obj):
     if not obj or not obj.pk:
         return "Появится после сохранения"
+    qty = f"{obj.total_quantity:,}".replace(",", "\u00a0")
     return (f"Доход лейбла {money(obj.total_gross, obj.currency)} · артисту {money(obj.total_amount, obj.currency)} "
-            f"({obj.rate.normalize():f}%) · {obj.total_quantity:,} прослушиваний · строк: {obj.lines_count}").replace(",", " ")
+            f"({obj.rate.normalize():f}%) · {qty} прослушиваний · строк: {obj.lines_count}")
 
 
 class ReportInline(admin.StackedInline):
@@ -68,6 +70,29 @@ class ReportInline(admin.StackedInline):
         return act_link(obj)
 
 
+class ReleaseInline(admin.StackedInline):
+    model = Release
+    extra = 0
+    fields = [("title", "artists_line", "kind"), ("release_date", "status", "is_published"),
+              ("upc", "isrc"), ("smart_link", "presave_date"), ("cover", "cover_url"), "note"]
+    show_change_link = True
+
+
+class StatsUploadForm(forms.Form):
+    KIND = [("streams", "Прослушивания (по дням или за период)"), ("playlists", "Попадания в плейлисты")]
+    kind = forms.ChoiceField(label="Что загружаем", choices=KIND, widget=forms.RadioSelect, initial="streams")
+    file = forms.FileField(label="Файл (.xlsx или .csv)",
+                           help_text="Выгрузка из DataLens («…» у графика → «Сохранить как» → XLSX) "
+                                     "или таблица с колонками Дата / Трек / Площадка / Прослушивания.")
+    artist = forms.ModelChoiceField(label="Артист", queryset=Artist.objects.all(), required=False,
+                                    help_text="Пусто — разложить по артистам по названию «Артист - Трек».")
+    period_start = forms.DateField(label="Период с", required=False,
+                                   help_text="Только если в файле нет колонки «Дата». Формат: 01.10.2026")
+    period_end = forms.DateField(label="по", required=False)
+    source = forms.CharField(label="Источник", required=False, initial="DataLens",
+                             help_text="Например: DataLens, Sferoom — артист увидит, откуда цифры")
+
+
 class BulkUploadForm(forms.Form):
     file = forms.FileField(label="Отчёт дистрибьютора (.xlsx или .csv)",
                            help_text="Файл за любой срок. Строки разложатся по кварталам по колонке периода.")
@@ -79,7 +104,7 @@ class ArtistAdmin(admin.ModelAdmin):
     form = ArtistAdminForm
     list_display = ["name", "login_email", "contracts_n", "reports_n", "last_report", "access", "open_as_artist"]
     search_fields = ["name", "legal_name", "user__email"]
-    inlines = [ContractInline, ReportInline]
+    inlines = [ContractInline, ReportInline, ReleaseInline]
     readonly_fields = ["bulk_upload"]
 
     def get_fieldsets(self, request, obj=None):
@@ -87,20 +112,25 @@ class ArtistAdmin(admin.ModelAdmin):
             ("Вход в кабинет", {"fields": ["email", "password", "is_active"]}),
             ("Профиль", {"fields": ["name", "legal_name", "phone", "royalty_rate", "notes"]}),
             ("Реквизиты для акта", {"fields": ["address", "inn"]}),
+            ("Реквизиты для выплат (артист заполняет сам в кабинете)", {
+                "fields": ["bank_recipient", "bank_name", "bank_bik", "bank_account", "bank_corr_account",
+                           "bank_updated_at"], "classes": ["collapse"] if not (obj and obj.has_bank_details) else []}),
         ]
         if obj:
             sets.insert(1, ("Отчёты", {"fields": ["bulk_upload"]}))
         return sets
 
     def get_readonly_fields(self, request, obj=None):
-        return ["bulk_upload"] if obj else []
+        return ["bulk_upload", "bank_updated_at"] if obj else ["bank_updated_at"]
 
     @admin.display(description="Общий отчёт")
     def bulk_upload(self, obj):
         url = reverse("admin:cabinet_artist_bulk_upload", args=[obj.pk])
         return format_html('<a class="button" href="{}">Загрузить отчёт за несколько кварталов</a>'
                            '<div class="help">Один файл дистрибьютора — кабинет сам разложит его по кварталам '
-                           'и посчитает долю артиста.</div>', url)
+                           'и посчитает долю артиста.</div>'
+                           '<p style="margin-top:12px"><a class="button" href="{}?artist={}">Загрузить свежие стримы / плейлисты</a></p>',
+                           url, reverse("admin:cabinet_stats_upload"), obj.pk)
 
     def save_model(self, request, obj, form, change):
         form.save_user(obj)
@@ -116,7 +146,51 @@ class ArtistAdmin(admin.ModelAdmin):
         return [
             path("<int:pk>/bulk-upload/", self.admin_site.admin_view(self.bulk_upload_view),
                  name="cabinet_artist_bulk_upload"),
+            path("stats-upload/", self.admin_site.admin_view(self.stats_upload_view),
+                 name="cabinet_stats_upload"),
         ] + super().get_urls()
+
+    def save_formset(self, request, form, formset, change):
+        instances = formset.save(commit=False)
+        for obj in formset.deleted_objects:
+            obj.delete()
+        for obj in instances:
+            if isinstance(obj, Release) and obj.cover_url and not obj.cover:
+                err = fetch_cover(obj)
+                if err:
+                    self.message_user(request, f"Релиз «{obj.title}»: {err}", messages.WARNING)
+            obj.save()
+        formset.save_m2m()
+
+    def stats_upload_view(self, request):
+        from .streams import import_playlists, import_streams
+        initial = {"artist": request.GET.get("artist")} if request.GET.get("artist") else None
+        form = StatsUploadForm(request.POST or None, request.FILES or None, initial=initial)
+        if request.method == "POST" and form.is_valid():
+            d = form.cleaned_data
+            try:
+                if d["kind"] == "playlists":
+                    counts, missing = import_playlists(d["file"], d["artist"])
+                else:
+                    counts, missing = import_streams(d["file"], d["artist"], d["period_start"], d["period_end"],
+                                                     d["source"] or "")
+            except ImportError_ as exc:
+                form.add_error("file", str(exc))
+            else:
+                if counts:
+                    self.message_user(request, "Загружено: " + "; ".join(f"{k} — {v} строк" for k, v in counts.items()),
+                                      messages.SUCCESS)
+                else:
+                    self.message_user(request, "Ни одной строки не подошло ни к одному артисту", messages.WARNING)
+                if missing:
+                    self.message_user(request, "Нет в кабинете (пропущены): " + ", ".join(missing[:30]),
+                                      messages.INFO)
+                if d["artist"]:
+                    return redirect("admin:cabinet_artist_change", d["artist"].pk)
+                return redirect("admin:cabinet_streamstat_changelist")
+        context = dict(self.admin_site.each_context(request), title="Свежая статистика: стримы и плейлисты",
+                       form=form, opts=self.model._meta)
+        return render(request, "admin/cabinet/stats_upload.html", context)
 
     def bulk_upload_view(self, request, pk):
         from .bulk import import_by_quarters
@@ -180,11 +254,14 @@ class ReportAdmin(admin.ModelAdmin):
     search_fields = ["artist__name", "artist__user__email"]
     autocomplete_fields = ["artist"]
     list_editable = ["is_published"]
-    readonly_fields = ["total_gross", "total_amount", "total_quantity", "lines_count", "top_tracks", "act"]
-    actions = ["reimport", "mark_signed"]
+    readonly_fields = ["total_gross", "total_amount", "total_quantity", "lines_count", "top_tracks", "act",
+                       "signed_uploaded_at"]
+    actions = ["reimport", "accept_signed", "mark_signed"]
     fieldsets = [
         (None, {"fields": ["artist", ("year", "quarter", "currency"), "royalty_rate", "is_published"]}),
-        ("Файлы", {"fields": ["detail_file", "signed_act_file", "act_status"]}),
+        ("Файлы", {"fields": ["detail_file", "signed_act_file", "signed_uploaded_at", "act_status"],
+                   "description": "Если артист загрузил подписанный акт, статус будет «На проверке». "
+                                  "Проверьте скан и поставьте «Подписан»."}),
         ("Акт-отчёт", {"fields": ["act", "act_date", "paid_amount", "act_file"],
                        "description": "Акт формируется автоматически по данным отчёта. Загрузите свой файл "
                                       "в «Акт для подписания», только если хотите заменить автоматический."}),
@@ -229,9 +306,15 @@ class ReportAdmin(admin.ModelAdmin):
         if ok:
             self.message_user(request, f"Перечитано отчётов: {ok}", messages.SUCCESS)
 
+    @admin.action(description="Принять подписанные акты, загруженные артистами")
+    def accept_signed(self, request, queryset):
+        n = queryset.filter(act_status=Report.ActStatus.REVIEW).exclude(signed_act_file="") \
+            .update(act_status=Report.ActStatus.SIGNED)
+        self.message_user(request, f"Принято актов: {n}", messages.SUCCESS)
+
     @admin.action(description="Отметить акты как подписанные")
     def mark_signed(self, request, queryset):
-        n = queryset.exclude(act_file="").update(act_status=Report.ActStatus.SIGNED)
+        n = queryset.update(act_status=Report.ActStatus.SIGNED)
         self.message_user(request, f"Отмечено: {n}", messages.SUCCESS)
 
 
@@ -284,3 +367,44 @@ class UserAdmin(BaseUserAdmin):
         ("Даты", {"fields": ["last_login", "date_joined"]}),
     ]
     add_fieldsets = [(None, {"classes": ["wide"], "fields": ["email", "password1", "password2", "is_staff"]})]
+
+
+@admin.register(Release)
+class ReleaseAdmin(admin.ModelAdmin):
+    list_display = ["title", "artist", "kind", "release_date", "status", "is_published"]
+    list_filter = ["status", "kind", "artist"]
+    search_fields = ["title", "artists_line", "artist__name", "upc", "isrc"]
+    autocomplete_fields = ["artist"]
+    list_editable = ["status"]
+    fields = ["artist", ("title", "artists_line", "kind"), ("release_date", "status", "is_published"),
+              ("upc", "isrc"), ("smart_link", "presave_date"), ("cover", "cover_url"), "note"]
+
+    def save_model(self, request, obj, form, change):
+        if obj.cover_url and not obj.cover:
+            err = fetch_cover(obj)
+            if err:
+                self.message_user(request, err, messages.WARNING)
+        super().save_model(request, obj, form, change)
+
+
+@admin.register(StreamStat)
+class StreamStatAdmin(admin.ModelAdmin):
+    list_display = ["artist", "track", "platform", "period_start", "period_end", "streams", "source"]
+    list_filter = ["artist", "platform", "source"]
+    search_fields = ["track", "artist__name"]
+    date_hierarchy = "period_end"
+
+    def has_add_permission(self, request):
+        return False
+
+    def changelist_view(self, request, extra_context=None):
+        self.message_user(request, format_html('Новые данные загружайте здесь: <a href="{}">загрузить файл</a>',
+                                               reverse("admin:cabinet_stats_upload")), messages.INFO)
+        return super().changelist_view(request, extra_context)
+
+
+@admin.register(PlaylistPlacement)
+class PlaylistPlacementAdmin(admin.ModelAdmin):
+    list_display = ["artist", "track", "platform", "playlist", "peak_position", "days", "last_date"]
+    list_filter = ["artist", "platform"]
+    search_fields = ["track", "playlist", "artist__name"]
