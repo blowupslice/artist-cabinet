@@ -1,0 +1,59 @@
+{% load cabinet_tags %}
+<section class="card payout">
+  <div class="card-head"><h2>Баланс и выплаты</h2></div>
+  {% if payout.payable_now > 0 %}
+  <div class="payout-main">
+    <div>
+      <div class="stat-label">К выплате</div>
+      <div class="stat-value big">{{ payout.payable_now|money:"RUB" }}</div>
+    </div>
+    <div class="payout-status">
+      {% with r=payout.report %}
+      {% if r.act_status == "signed" %}
+        <span class="badge badge-good">Акт принят</span>
+        <div class="small muted">Акт за {{ r.period_short }} подписан — менеджер готовит перевод на ваш счёт.</div>
+      {% elif r.act_status == "review" %}
+        <span class="badge badge-warn">Акт на проверке</span>
+        <div class="small muted">Мы получили подписанный акт за {{ r.period_short }} и проверяем его.</div>
+      {% else %}
+        <span class="badge badge-warn">Нужна ваша подпись</span>
+        <div class="small muted">Подпишите акт за {{ r.period_short }} — после этого отправим деньги.</div>
+        <div class="actions" style="margin-top:10px">
+          <a class="btn btn-sm" href="{% url 'download_report_file' r.pk 'act' %}">{% include "cabinet/_icon.html" with name="download" %}Скачать акт</a>
+          <a class="btn btn-sm btn-primary" href="{% url 'finance_period' r.slug %}#sign">{% include "cabinet/_icon.html" with name="upload" %}Загрузить подписанный</a>
+        </div>
+      {% endif %}
+      {% endwith %}
+    </div>
+  </div>
+  {% else %}
+  <div class="payout-main">
+    <div>
+      <div class="stat-label">Копится до выплаты</div>
+      <div class="stat-value big">{{ payout.unpaid|money:"RUB" }}</div>
+    </div>
+    <div class="payout-status">
+      <div class="meter" style="margin:6px 0 8px"><span style="width: {{ payout.progress|cssnum }}%"></span></div>
+      <div class="small muted">Выплачиваем от {{ payout.threshold|money:"RUB" }}: осталось {{ payout.to_threshold|money:"RUB" }}.
+        Если не наберётся — выплатим всё накопленное по итогам {{ payout.year_end_year }} года.</div>
+    </div>
+  </div>
+  {% endif %}
+  <div class="payout-foot">
+    <div><span class="muted small">Начислено за всё время</span><b>{{ payout.total_accrued|money:"RUB" }}</b></div>
+    <div><span class="muted small">Выплачено</span><b>{{ payout.total_paid|money:"RUB" }}</b></div>
+    <div><span class="muted small">Реквизиты</span>
+      {% if artist.has_bank_details %}<b>{{ artist.bank_name|default:"Банк" }} ··{{ artist.bank_account|slice:"-4:" }}</b>
+      {% else %}<a href="{% url 'account' %}?tab=bank#bank"><b>Заполнить</b></a>{% endif %}</div>
+  </div>
+  <details class="howto" id="how-pay">
+    <summary>Как получить выплату — 3 шага</summary>
+    <ol class="steps">
+      <li><b>Скачайте акт</b> за квартал в разделе «Финансы» — он формируется автоматически.</li>
+      <li><b>Подпишите и загрузите</b> скан или фото подписанного акта прямо в кабинете — почта не нужна.</li>
+      <li><b>Проверьте реквизиты</b> в «Настройках». Менеджер проверит акт и переведёт деньги на ваш счёт.</li>
+    </ol>
+    <p class="small muted" style="margin:8px 0 0">Минимальная сумма выплаты — {{ payout.threshold|money:"RUB" }}. Меньшие суммы копятся
+      и выплачиваются при достижении порога или по итогам года (в акте за IV квартал).</p>
+  </details>
+</section>
