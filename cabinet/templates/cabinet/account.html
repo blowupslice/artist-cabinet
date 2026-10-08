@@ -2,23 +2,56 @@
 {% block title %}Настройки — {{ SITE_NAME }}{% endblock %}
 {% block content %}
 <div class="page-head"><h1>Настройки</h1></div>
-<div class="card" style="max-width:480px">
-  <div class="card-head"><h2>Смена пароля</h2></div>
-  {% if request.viewing_as %}
-  <p class="muted">В режиме просмотра за артиста пароль менять нельзя. Задайте новый пароль в админке.</p>
-  {% else %}
-  <form method="post" novalidate>
-    {% csrf_token %}
-    {% for f in form %}
-    <div class="field">
-      <label for="{{ f.id_for_label }}">{{ f.label }}</label>
-      {{ f }}
-      {% if f.help_text %}<div class="helptext">{{ f.help_text }}</div>{% endif %}
-      {{ f.errors }}
-    </div>
-    {% endfor %}
-    <button class="btn btn-primary" type="submit">Сохранить пароль</button>
-  </form>
-  {% endif %}
+<div class="grid grid-2" style="align-items:start">
+  <section class="card" id="bank">
+    <div class="card-head"><h2>Реквизиты для выплат</h2>
+      {% if artist.has_bank_details %}<span class="badge badge-good">Заполнены</span>{% else %}<span class="badge badge-warn">Не заполнены</span>{% endif %}</div>
+    {% if artist.has_bank_details and not open_bank %}
+      <dl class="profile">
+        <dt>Получатель</dt><dd>{{ artist.bank_recipient }}</dd>
+        <dt>ИНН</dt><dd>{{ artist.inn }}</dd>
+        <dt>Банк</dt><dd>{{ artist.bank_name }}</dd>
+        <dt>БИК</dt><dd>{{ artist.bank_bik }}</dd>
+        <dt>Счёт</dt><dd>··{{ artist.bank_account|slice:"-4:" }}</dd>
+      </dl>
+      <p class="small muted">Обновлены {{ artist.bank_updated_at|date:"j E Y" }}</p>
+      <a class="btn btn-sm" href="?tab=bank#bank">Изменить</a>
+    {% else %}
+      <p class="small muted" style="margin-top:0">На этот счёт мы переводим ваши выплаты. Все реквизиты есть в приложении банка — раздел «Реквизиты счёта».</p>
+      {% if request.viewing_as %}<p class="muted">В режиме просмотра за артиста сохранять нельзя.</p>{% endif %}
+      <form method="post" novalidate>
+        {% csrf_token %}<input type="hidden" name="form" value="bank">
+        {% for f in bank_form %}
+        <div class="field">
+          <label for="{{ f.id_for_label }}">{{ f.label }}{% if f.field.required %} <span class="req">*</span>{% endif %}</label>
+          {{ f }}
+          {% if f.help_text %}<div class="helptext">{{ f.help_text }}</div>{% endif %}
+          {{ f.errors }}
+        </div>
+        {% endfor %}
+        <button class="btn btn-primary" type="submit"{% if request.viewing_as %} disabled{% endif %}>Сохранить реквизиты</button>
+      </form>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>Смена пароля</h2></div>
+    {% if request.viewing_as %}
+    <p class="muted">В режиме просмотра за артиста пароль менять нельзя. Задайте новый пароль в админке.</p>
+    {% else %}
+    <form method="post" novalidate>
+      {% csrf_token %}<input type="hidden" name="form" value="password">
+      {% for f in form %}
+      <div class="field">
+        <label for="{{ f.id_for_label }}">{{ f.label }}</label>
+        {{ f }}
+        {% if f.help_text %}<div class="helptext">{{ f.help_text }}</div>{% endif %}
+        {{ f.errors }}
+      </div>
+      {% endfor %}
+      <button class="btn btn-primary" type="submit">Сохранить пароль</button>
+    </form>
+    {% endif %}
+  </section>
 </div>
 {% endblock %}
