@@ -17,9 +17,12 @@ from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_GET
 
-from .forms import EmailLoginForm, PasswordChangeFormRu
-from .models import Artist, Contract, Report, RoyaltyLine
-from .stats import breakdown, pct_change, rate_per_1000
+from django.utils import timezone
+from django.views.decorators.http import require_POST
+
+from .forms import BankDetailsForm, EmailLoginForm, PasswordChangeFormRu, SignedActForm
+from .models import Artist, Contract, PlaylistPlacement, Release, Report, RoyaltyLine
+from .stats import breakdown, pct_change, rate_per_1000, split
 
 
 class LoginView(auth_views.LoginView):
@@ -109,8 +112,27 @@ def dashboard(request):
         r.bar = float(r.total_amount / max_total * 100)
     to_sign = [r for r in reports if r.act_status == Report.ActStatus.TO_SIGN]
     total_all = sum((r.total_amount for r in reports), Decimal(0))
+    from .acts import payout_overview
+    payout = payout_overview(artist)
+    releases = list(artist.releases.filter(is_published=True)[:20])
+    upcoming = sorted([r for r in releases if r.is_upcoming], key=lambda r: r.release_date)
+    latest_release = next((r for r in releases if not r.is_upcoming and r.status == Release.Status.RELEASED), None)
+    playlists = list(artist.playlist_placements.all()[:5])
+    from .streams import recent_summary
+    fresh = recent_summary(artist)
+    todo = []
+    if payout.report and payout.report.act_status == Report.ActStatus.TO_SIGN:
+        todo.append(("act", payout.report))
+    if not artist.has_bank_details:
+        todo.append(("bank", None))
     return render(request, "cabinet/dashboard.html", {
         "artist": artist,
+        "payout": payout,
+        "todo": todo,
+        "upcoming": upcoming[:2],
+        "latest_release": latest_release,
+        "playlists": playlists,
+        "fresh": fresh,
         "contracts": artist.contracts.all(),
         "latest": reports[0] if reports else None,
         "history": history,
@@ -142,9 +164,9 @@ def finance(request, slug=None):
     by_track = list(
         lines.values("track").annotate(amount=Sum("amount"), quantity=Sum("quantity")).order_by("-amount")
     )
-    breakdown = {}
+    pairs = {}
     for row in lines.values("track", "platform").annotate(amount=Sum("amount"), quantity=Sum("quantity")).order_by("-amount"):
-        breakdown.setdefault(row["track"], []).append(row)
+        pairs.setdefault(row["track"], []).append(row)
 
     total = report.total_amount or Decimal(0)
     top = by_platform[0]["amount"] if by_platform else 1
@@ -154,7 +176,7 @@ def finance(request, slug=None):
         p["rate"] = rate_per_1000(p["amount"], p["quantity"])
     for t in by_track:
         t["share"] = float(t["amount"] / total * 100) if total else 0
-        t["platforms"] = breakdown.get(t["track"], [])
+        t["platforms"] = pairs.get(t["track"], [])
 
     idx = reports.index(report)
     prev_report = reports[idx + 1] if idx + 1 < len(reports) else None
@@ -162,10 +184,24 @@ def finance(request, slug=None):
     if prev_report and prev_report.total_amount:
         delta = float((report.total_amount - prev_report.total_amount) / prev_report.total_amount * 100)
 
+    countries = breakdown(lines, "country")
+    leaders = {
+        "track": by_track[0] if by_track else None,
+        "platform": by_platform[0] if by_platform else None,
+        "country": countries[0] if countries and any(c["key"] for c in countries) else None,
+    }
+    from .acts import compute
+    act = compute(report)
+
     return render(request, "cabinet/finance.html", {
         "artist": artist,
         "reports": reports,
         "report": report,
+        "leaders": leaders,
+        "rights": split(lines, "rights_type"),
+        "usage": split(lines, "usage_type"),
+        "act": act,
+        "act_form": SignedActForm(),
         "prev_report": prev_report,
         "delta": delta,
         "by_platform": by_platform,
@@ -178,8 +214,10 @@ def finance(request, slug=None):
 def stats(request):
     artist = request.artist
     reports = list(published_reports(artist))
+    from .streams import recent_summary
+    extra = {"fresh": recent_summary(artist), "playlists": list(artist.playlist_placements.all()[:50])}
     if not reports:
-        return render(request, "cabinet/stats.html", {"artist": artist, "reports": [], "nav": "stats"})
+        return render(request, "cabinet/stats.html", {"artist": artist, "reports": [], "nav": "stats", **extra})
 
     years = sorted({r.year for r in reports}, reverse=True)
     options = [("all", "За всё время")] + [(str(y), f"{y} год") for y in years] + [(r.slug, r.period_short) for r in reports]
@@ -258,18 +296,72 @@ def stats(request):
         "top_track": tracks[0] if tracks else None,
         "top_platform": platforms[0] if platforms else None,
         "nav": "stats",
+        **extra,
     })
 
 
 @artist_required
 def account(request):
-    form = PasswordChangeFormRu(request.user, request.POST or None)
-    if request.method == "POST" and not request.viewing_as and form.is_valid():
+    artist = request.artist
+    which = request.POST.get("form") if request.method == "POST" else None
+    form = PasswordChangeFormRu(request.user, request.POST if which == "password" else None)
+    bank_form = BankDetailsForm(request.POST if which == "bank" else None, instance=artist)
+    if which and request.viewing_as:
+        messages.error(request, "В режиме просмотра за артиста сохранять нельзя")
+        return redirect("account")
+    if which == "password" and form.is_valid():
         form.save()
         update_session_auth_hash(request, request.user)
         messages.success(request, "Пароль изменён")
         return redirect("account")
-    return render(request, "cabinet/account.html", {"artist": request.artist, "form": form, "nav": "account"})
+    if which == "bank" and bank_form.is_valid():
+        a = bank_form.save(commit=False)
+        a.bank_updated_at = timezone.now()
+        a.save()
+        messages.success(request, "Реквизиты сохранены. Выплаты придут на этот счёт.")
+        nxt = request.GET.get("next") or ""
+        return redirect(nxt if nxt.startswith("/") and not nxt.startswith("//") else "account")
+    return render(request, "cabinet/account.html", {
+        "artist": artist, "form": form, "bank_form": bank_form, "nav": "account",
+        "open_bank": which == "bank" or request.GET.get("tab") == "bank" or not artist.has_bank_details,
+    })
+
+
+@artist_required
+@require_POST
+def upload_signed_act(request, pk):
+    report = get_object_or_404(Report, pk=pk, artist=request.artist, is_published=True)
+    back = redirect("finance_period", report.slug)
+    if request.viewing_as:
+        messages.error(request, "В режиме просмотра за артиста загружать файлы нельзя")
+        return back
+    if report.act_status == Report.ActStatus.SIGNED:
+        messages.error(request, "Этот акт уже принят — загружать заново не нужно")
+        return back
+    form = SignedActForm(request.POST, request.FILES)
+    if not form.is_valid():
+        messages.error(request, " ".join(form.errors.get("file", ["Не удалось загрузить файл"])))
+        return back
+    if report.signed_act_file:
+        report.signed_act_file.delete(save=False)
+    report.signed_act_file = form.cleaned_data["file"]
+    report.act_status = Report.ActStatus.REVIEW
+    report.signed_uploaded_at = timezone.now()
+    report._from_artist = True
+    report.save()
+    messages.success(request, "Акт получили, спасибо! Менеджер проверит его и отправит выплату.")
+    return back
+
+
+@artist_required
+def releases(request):
+    artist = request.artist
+    items = list(artist.releases.filter(is_published=True))
+    upcoming = sorted([r for r in items if r.is_upcoming], key=lambda r: r.release_date)
+    past = [r for r in items if not r.is_upcoming]
+    return render(request, "cabinet/releases.html", {
+        "artist": artist, "upcoming": upcoming, "past": past, "nav": "releases",
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -379,6 +471,22 @@ def _act_pdf_response(report, name):
 def admin_act_pdf(request, pk):
     report = get_object_or_404(Report, pk=pk)
     return _act_pdf_response(report, _safe_name(f"Акт_{report.artist.name}_{report.period_short}"))
+
+
+@artist_required
+@require_GET
+def release_cover(request, pk):
+    release = get_object_or_404(Release, pk=pk, artist=request.artist, is_published=True)
+    if not release.cover:
+        raise Http404
+    try:
+        fh = release.cover.open("rb")
+    except FileNotFoundError as exc:
+        raise Http404 from exc
+    ctype = mimetypes.guess_type(release.cover.name)[0] or "image/jpeg"
+    resp = FileResponse(fh, content_type=ctype)
+    resp["Cache-Control"] = "private, max-age=86400"
+    return resp
 
 
 @staff_member_required
