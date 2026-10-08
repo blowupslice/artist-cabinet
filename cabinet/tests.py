@@ -350,7 +350,8 @@ class ArtistToolsTests(TestCase):
         counts, _ = import_playlists(f)
         self.assertEqual(counts, {"Эсчевский": 2})
         resp = self.client.get(reverse("stats"))
-        self.assertContains(resp, "Свежие прослушивания")
+        self.assertNotContains(resp, "Свежие прослушивания")  # блок пока скрыт
+        self.assertNotContains(resp, "За всё время")
         self.assertContains(resp, "Если поругались")
         self.assertContains(self.client.get(reverse("dashboard")), "Ваши треки в плейлистах")
 
