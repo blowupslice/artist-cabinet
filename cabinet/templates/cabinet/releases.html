@@ -1,0 +1,36 @@
+{% extends "cabinet/base.html" %}
+{% load cabinet_tags %}
+{% block title %}Релизы — {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><p class="muted small" style="margin:0 0 4px">Каталог</p><h1>Релизы</h1></div></div>
+
+{% if not upcoming and not past %}
+<div class="card"><p class="empty" style="padding:0">Здесь появятся ваши релизы — с датами выхода, статусом и смарт-ссылками.</p></div>
+{% endif %}
+
+{% if upcoming %}
+<h2 class="section-title">Скоро выйдут</h2>
+<div class="releases">
+  {% for r in upcoming %}{% include "cabinet/_release.html" %}{% endfor %}
+</div>
+{% endif %}
+
+{% if past %}
+<h2 class="section-title">Вышли</h2>
+<div class="releases">
+  {% for r in past %}{% include "cabinet/_release.html" %}{% endfor %}
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('[data-copy]').forEach(b => b.addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(b.dataset.copy); } catch (e) {
+    const t = document.createElement('textarea'); t.value = b.dataset.copy; document.body.appendChild(t); t.select();
+    document.execCommand('copy'); t.remove();
+  }
+  const old = b.innerHTML; b.textContent = 'Скопировано'; setTimeout(() => b.innerHTML = old, 1500);
+}));
+</script>
+{% endblock %}
