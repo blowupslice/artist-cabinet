@@ -146,6 +146,7 @@ class AccessTests(TestCase):
             "email": "New@Example.com", "password": "Fresh-pass-2026", "is_active": "on", "name": "Новый", "royalty_rate": "50",
             "contracts-TOTAL_FORMS": 0, "contracts-INITIAL_FORMS": 0,
             "reports-TOTAL_FORMS": 0, "reports-INITIAL_FORMS": 0,
+            "releases-TOTAL_FORMS": 0, "releases-INITIAL_FORMS": 0,
         })
         self.assertEqual(resp.status_code, 302, getattr(resp, "context", None) and resp.context["adminform"].form.errors)
         self.client.logout()
@@ -159,6 +160,7 @@ class AccessTests(TestCase):
             "contracts-TOTAL_FORMS": 1, "contracts-INITIAL_FORMS": 0,
             "contracts-0-signed_date": "2026-10-03",  # строка договора без названия и файла -> ошибка
             "reports-TOTAL_FORMS": 0, "reports-INITIAL_FORMS": 0,
+            "releases-TOTAL_FORMS": 0, "releases-INITIAL_FORMS": 0,
         }
         resp = self.client.post(reverse("admin:cabinet_artist_add"), data)
         self.assertEqual(resp.status_code, 200)
@@ -172,6 +174,7 @@ class AccessTests(TestCase):
             "email": "lost@example.com", "password": "Fresh-pass-2026", "is_active": "on", "name": "Нашёлся", "royalty_rate": "50",
             "contracts-TOTAL_FORMS": 0, "contracts-INITIAL_FORMS": 0,
             "reports-TOTAL_FORMS": 0, "reports-INITIAL_FORMS": 0,
+            "releases-TOTAL_FORMS": 0, "releases-INITIAL_FORMS": 0,
         })
         self.assertEqual(resp.status_code, 302)
         self.assertEqual(Artist.objects.get(name="Нашёлся").user.email, "lost@example.com")
@@ -185,6 +188,7 @@ class AccessTests(TestCase):
             "email": "gen@example.com", "password": "", "is_active": "on", "name": "Ген", "royalty_rate": "50",
             "contracts-TOTAL_FORMS": 0, "contracts-INITIAL_FORMS": 0,
             "reports-TOTAL_FORMS": 0, "reports-INITIAL_FORMS": 0,
+            "releases-TOTAL_FORMS": 0, "releases-INITIAL_FORMS": 0,
         }, follow=True)
         msgs = [str(m) for m in resp.context["messages"]]
         import re
@@ -225,3 +229,136 @@ class AccessTests(TestCase):
         self.assertEqual(resp["Content-Type"], "application/pdf")
         resp = self.client.get(reverse("download_report_file", args=[q4.pk, "detail"]))
         self.assertEqual(resp.status_code, 200)
+
+
+@override_settings(MEDIA_ROOT=TMP)
+class ArtistToolsTests(TestCase):
+    def setUp(self):
+        from .models import LabelSettings
+        LabelSettings.get()
+        self.user = User.objects.create_user("es@example.com", "Pass-word-123")
+        self.artist = Artist.objects.create(user=self.user, name="Эсчевский")
+        other = User.objects.create_user("x@example.com", "Pass-word-123")
+        self.other = Artist.objects.create(user=other, name="NOCAPONE")
+        self.reports = []
+        for (y, q, amount) in [(2025, 3, 2000), (2025, 4, 600), (2026, 1, 300)]:
+            r = Report(artist=self.artist, year=y, quarter=q)
+            r._parsed_rows = parse_report(xlsx([["Трек", "Площадка", "Сумма", "Тип прав", "Вид использования контента"],
+                                               ["Темнота", "Яндекс Музыка", amount * 0.8, "Смежные права", "Подписка"],
+                                               ["Темнота", "VK Музыка", amount * 0.2, "Авторские права", "Реклама"]]))
+            r.detail_file.save("d.xlsx", ContentFile(b"x"), save=False)
+            r.save()
+            self.reports.append(r)
+        self.client.login(username="es@example.com", password="Pass-word-123")
+
+    def test_payout_overview(self):
+        from .acts import payout_overview
+        p = payout_overview(self.artist)
+        # 1000 + 300 = 1300 < 5000, но Q4 — выплата по итогам года; не выплачено → долг тянется в Q1
+        self.assertEqual(p.total_accrued, Decimal("1450.00"))
+        self.assertEqual(p.payable_now, Decimal("1450.00"))
+        self.assertEqual(p.report.quarter, 1)
+        q4 = self.reports[1]
+        q4.paid_amount = Decimal("1300.00")
+        q4.save()
+        p = payout_overview(self.artist)
+        self.assertEqual(p.payable_now, Decimal("0"))
+        self.assertEqual(p.unpaid, Decimal("150.00"))
+        self.assertEqual(p.year_end_year, 2026)
+
+    def test_dashboard_shows_payout_and_todo(self):
+        resp = self.client.get(reverse("dashboard"))
+        self.assertContains(resp, "Баланс и выплаты")
+        self.assertContains(resp, "Укажите реквизиты")
+        self.assertContains(resp, "Подпишите акт")
+
+    def test_finance_splits_and_upload_signed_act(self):
+        r = self.reports[-1]
+        resp = self.client.get(reverse("finance_period", args=[r.slug]))
+        self.assertContains(resp, "Смежные права")
+        self.assertContains(resp, "Подписка")
+        self.assertContains(resp, "Отправить подписанный акт")
+        bad = SimpleUploadedFile("act.exe", b"MZ")
+        self.client.post(reverse("upload_signed_act", args=[r.pk]), {"file": bad})
+        r.refresh_from_db()
+        self.assertEqual(r.act_status, Report.ActStatus.TO_SIGN)
+        ok = SimpleUploadedFile("act.pdf", b"%PDF-1.4")
+        resp = self.client.post(reverse("upload_signed_act", args=[r.pk]), {"file": ok}, follow=True)
+        r.refresh_from_db()
+        self.assertEqual(r.act_status, Report.ActStatus.REVIEW)
+        self.assertContains(resp, "На проверке")
+        # чужой отчёт недоступен
+        foreign = Report.objects.create(artist=self.other, year=2026, quarter=1, detail_file="x.xlsx")
+        resp = self.client.post(reverse("upload_signed_act", args=[foreign.pk]), {"file": ok})
+        self.assertEqual(resp.status_code, 404)
+
+    def test_bank_details_validation(self):
+        url = reverse("account")
+        data = {"form": "bank", "bank_recipient": "Гольдштейн Дмитрий Александрович", "inn": "027207817147",
+                "address": "", "bank_name": "Т-Банк", "bank_bik": "0445252", "bank_account": "40817810",
+                "bank_corr_account": ""}
+        resp = self.client.post(url, data)
+        self.assertContains(resp, "ровно 9 цифр")
+        data.update(bank_bik="044525974", bank_account="4081 7810 0000 0000 0001")
+        resp = self.client.post(url, data)
+        self.assertEqual(resp.status_code, 302)
+        self.artist.refresh_from_db()
+        self.assertTrue(self.artist.has_bank_details)
+        self.assertEqual(self.artist.bank_account, "40817810000000000001")
+        self.assertContains(self.client.get(reverse("dashboard")), "Т-Банк ··0001")
+
+    def test_releases_page(self):
+        import datetime as dt
+        from django.utils import timezone
+        from .models import Release
+        Release.objects.create(artist=self.artist, title="Темнота", release_date=dt.date(2025, 6, 6),
+                               status="released", smart_link="https://band.link/test")
+        Release.objects.create(artist=self.artist, title="Новый", status="scheduled",
+                               release_date=timezone.localdate() + dt.timedelta(days=5))
+        Release.objects.create(artist=self.other, title="Чужой", status="released")
+        resp = self.client.get(reverse("releases"))
+        self.assertContains(resp, "Темнота")
+        self.assertContains(resp, "через 5 дней")
+        self.assertContains(resp, "band.link/test")
+        self.assertNotContains(resp, "Чужой")
+        self.assertContains(self.client.get(reverse("dashboard")), "До релиза «Новый»")
+
+    def test_stream_imports(self):
+        from .streams import import_playlists, import_streams
+        # длинный формат с датами, раскладка по «Артист - Трек», фит обоим
+        f = xlsx([["Дата", "Трек", "DSP", "Стримы"],
+                  ["01.10.2026", "Эсчевский - Темнота", "Яндекс Музыка", 10],
+                  ["02.10.2026", "Эсчевский & NOCAPONE - Фит", "VK Музыка", 5],
+                  ["02.10.2026", "Неизвестный - Трек", "VK Музыка", 7]])
+        counts, missing = import_streams(f, source="DataLens")
+        self.assertEqual(counts, {"Эсчевский": 2, "NOCAPONE": 1})
+        self.assertEqual(missing, ["Неизвестный"])
+        # широкий формат графика: колонки — треки
+        f = xlsx([["Дата", "Эсчевский - Темнота", "NOCAPONE - Boiler"], ["03.10.2026", 12, 100]])
+        import_streams(f)
+        self.assertEqual(self.artist.stream_stats.filter(period_start="2026-10-03").get().streams, 12)
+        # сводка за период без колонки даты
+        import datetime as dt
+        f = xlsx([["Трек", "Площадка", "Прослушивания"], ["Темнота", "Яндекс Музыка", 64], ["Темнота", "ВКонтакте", 30]])
+        with self.assertRaises(ImportError_):
+            import_streams(f, self.artist)
+        import_streams(f, self.artist, dt.date(2026, 10, 1), dt.date(2026, 10, 8), "Sferoom")
+        # плейлисты: ячейка трека объединена
+        f = xlsx([["Трек", "DSP", "Плейлист", "Пиковая позиция", "Количество дней в плейлисте", "Первая дата", "Последняя дата"],
+                  ["Эсчевский - Темнота", "Яндекс Музыка", "Русский рэп", 246, 7, "02.10.2026", "08.10.2026"],
+                  [None, "VK Музыка", "Если поругались", 66, 7, "02.10.2026", "08.10.2026"]])
+        counts, _ = import_playlists(f)
+        self.assertEqual(counts, {"Эсчевский": 2})
+        resp = self.client.get(reverse("stats"))
+        self.assertContains(resp, "Свежие прослушивания")
+        self.assertContains(resp, "Если поругались")
+        self.assertContains(self.client.get(reverse("dashboard")), "Ваши треки в плейлистах")
+
+    def test_admin_upload_pages(self):
+        User.objects.create_superuser("boss@example.com", "Pass-word-123")
+        self.client.logout()
+        self.client.login(username="boss@example.com", password="Pass-word-123")
+        self.assertEqual(self.client.get(reverse("admin:cabinet_stats_upload")).status_code, 200)
+        self.assertEqual(self.client.get(reverse("admin:cabinet_artist_change", args=[self.artist.pk])).status_code, 200)
+        self.assertEqual(self.client.get(reverse("admin:cabinet_release_add")).status_code, 200)
+        self.assertEqual(self.client.get(reverse("admin:cabinet_streamstat_changelist")).status_code, 200)
