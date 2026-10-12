@@ -15,12 +15,11 @@
 {% endif %}
 <header class="topbar">
   <div class="topbar-inner">
-    <a class="brand" href="{% url 'dashboard' %}">{% include "cabinet/_logo.html" %}<span class="brand-name">Кабинет артиста</span></a>
+    <a class="brand" href="{% url 'dashboard' %}">{% include "cabinet/_logo.html" %}<span class="brand-name"><span class="brand-title">Кабинет артиста</span><span class="brand-demo">ДЕМО ВЕРСИЯ</span></span></a>
     <nav class="nav">
       <a href="{% url 'dashboard' %}" class="{% if nav == 'dashboard' %}active{% endif %}">Профиль</a>
       <a href="{% url 'finance' %}" class="{% if nav == 'finance' %}active{% endif %}">Финансы</a>
       <a href="{% url 'stats' %}" class="{% if nav == 'stats' %}active{% endif %}">Статистика</a>
-      <a href="{% url 'releases' %}" class="{% if nav == 'releases' %}active{% endif %}">Релизы</a>
       <a href="{% url 'account' %}" class="{% if nav == 'account' %}active{% endif %}">Настройки</a>
     </nav>
     <div class="user-chip">
