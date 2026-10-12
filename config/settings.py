@@ -152,6 +152,25 @@ if not DEBUG:
     SECURE_CONTENT_TYPE_NOSNIFF = True
     SECURE_REFERRER_POLICY = "same-origin"
 
+# ---------------------------------------------------------------------------
+# Почта: уведомления лейблу (например, когда артист загрузил подписанный акт).
+# Для Яндекс 360: smtp.yandex.ru, порт 465, SSL, пароль приложения.
+# Если EMAIL_HOST_PASSWORD не задан — письма просто не отправляются.
+# ---------------------------------------------------------------------------
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "smtp.yandex.ru")
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "465"))
+EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", EMAIL_PORT == 465)
+EMAIL_USE_TLS = not EMAIL_USE_SSL and env_bool("EMAIL_USE_TLS", EMAIL_PORT == 587)
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
+EMAIL_TIMEOUT = 20
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "") or EMAIL_HOST_USER or "webmaster@localhost"
+SERVER_EMAIL = DEFAULT_FROM_EMAIL
+# Куда слать уведомления (через запятую)
+NOTIFY_EMAILS = env_list("NOTIFY_EMAILS", "")
+# Отправлять письма в фоне, чтобы артист не ждал ответа почтового сервера
+NOTIFY_ASYNC = env_bool("NOTIFY_ASYNC", True)
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
