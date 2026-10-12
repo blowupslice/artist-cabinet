@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=Unbounded:wght@500;600;700&display=swap">
 <link rel="stylesheet" href="{% static 'cabinet/style.css' %}">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23e2583b'/><text x='16' y='22' font-size='16' text-anchor='middle' fill='white'>♪</text></svg>">
+{% include "cabinet/_favicon.html" %}
 </head>
 <body>
 {% if request.viewing_as %}
