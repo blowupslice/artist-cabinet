@@ -201,6 +201,15 @@ def parse_period(value):
     if isinstance(value, (dt.date, dt.datetime)):
         return value.year, value.month
     s = str(value).strip().lower()
+    # Кварталы: «2024-2 кв.», «2 кв. 2024», «II кв. 2024», «2024Q3», «Q3 2024» → последний месяц квартала
+    roman = {"i": 1, "ii": 2, "iii": 3, "iv": 4}
+    m = re.search(r"(\d{4})\s*[-./ ]?\s*(?:q\s*([1-4])|([1-4])\s*(?:-?й\s*)?кв)", s)
+    if m:
+        return int(m.group(1)), int(m.group(2) or m.group(3)) * 3
+    m = re.search(r"(?:q\s*([1-4])|\b([1-4]|iv|iii|ii|i)\s*(?:-?й\s*)?кв[а-я.]*)\s*[-./ ]?\s*(\d{4})", s)
+    if m:
+        qn = m.group(1) or m.group(2)
+        return int(m.group(3)), (int(qn) if qn.isdigit() else roman[qn]) * 3
     m = re.search(r"(\d{4})\s*[-./]\s*(\d{1,2})", s)
     if m and 1 <= int(m.group(2)) <= 12:
         return int(m.group(1)), int(m.group(2))
