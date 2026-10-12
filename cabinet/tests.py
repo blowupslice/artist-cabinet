@@ -31,6 +31,14 @@ class ImporterTests(TestCase):
         self.assertEqual(parse_number("1.234,56 ₽"), Decimal("1234.56"))
         self.assertIsNone(parse_number(""))
 
+    def test_periods_months_and_quarters(self):
+        from .importer import parse_period
+        cases = {"2025-12": (2025, 12), "06.2024": (2024, 6), "Декабрь 2025": (2025, 12),
+                 "2024-2 кв.": (2024, 6), "2024Q3": (2024, 9), "Q4 2025": (2025, 12),
+                 "III кв. 2024": (2024, 9), "1 кв. 2026": (2026, 3)}
+        for value, expected in cases.items():
+            self.assertEqual(parse_period(value), expected, value)
+
     def test_xlsx_with_title_rows_and_totals(self):
         f = xlsx([
             ["Отчёт за квартал"], [],
