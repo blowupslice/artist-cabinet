@@ -63,7 +63,8 @@ h2 { font-size: 15px; font-weight: 600; text-transform: uppercase; letter-spacin
 .brand { font-weight: 700; color: var(--text); white-space: nowrap; display: flex; align-items: center; gap: 12px; }
 .brand:hover { text-decoration: none; }
 .brand-logo { height: 30px; width: auto; display: block; }
-.brand-name { font-family: "Unbounded", "Onest", sans-serif; font-size: 12px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; padding-left: 12px; border-left: 1px solid var(--border); }
+.brand-name { font-family: "Unbounded", "Onest", sans-serif; font-size: 12px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; padding-left: 12px; border-left: 1px solid var(--border); display: flex; flex-direction: column; gap: 3px; line-height: 1.2; }
+.brand-demo { font-size: 9px; font-weight: 600; letter-spacing: .14em; color: var(--brand-red); }
 .brand-mark {
   width: 28px; height: 28px; border-radius: 8px; background: var(--accent);
   display: grid; place-items: center; color: var(--accent-text); font-size: 14px;
@@ -216,7 +217,7 @@ dl.profile dd { margin: 0; font-weight: 540; overflow-wrap: anywhere; }
   .topbar-inner { gap: 12px; height: auto; padding-top: 10px; padding-bottom: 10px; flex-wrap: wrap; }
   .nav { order: 3; flex: 1 0 100%; overflow-x: auto; }
   .page-head .actions .btn { padding: 8px 12px; font-size: 13px; }
-  .brand-name { display: none; }
+  .brand-title { display: none; }
   .user-chip .email { display: none; }
   .user-chip { margin-left: auto; }
   h1 { font-size: 22px; }
@@ -282,7 +283,7 @@ tfoot td { background: rgba(255, 255, 255, 0.06); }
 .viewas { background: var(--brand-yellow); color: #1a1a1a; }
 .login-card .brand { flex-direction: column; gap: 14px; }
 .login-card .brand-logo { height: 44px; }
-.login-card .brand-name { border-left: 0; padding-left: 0; }
+.login-card .brand-name { border-left: 0; padding-left: 0; align-items: center; }
 @media (max-width: 700px) { .brand-logo { height: 26px; } }
 
 /* ---------- v2: баланс, акты, релизы, свежая статистика ---------- */
