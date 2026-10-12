@@ -300,6 +300,17 @@ class ArtistToolsTests(TestCase):
         resp = self.client.post(reverse("upload_signed_act", args=[foreign.pk]), {"file": ok})
         self.assertEqual(resp.status_code, 404)
 
+    def test_favicon(self):
+        for url, ctype in (("/favicon.ico", "image/png"), ("/favicon.svg", "image/svg+xml"),
+                           ("/apple-touch-icon.png", "image/png")):
+            resp = self.client.get(url)
+            self.assertEqual(resp.status_code, 200)
+            self.assertEqual(resp["Content-Type"], ctype)
+        self.assertContains(self.client.get(reverse("dashboard")), 'href="/favicon.svg"')
+        self.client.logout()
+        self.assertContains(self.client.get(reverse("login")), 'href="/favicon.svg"')
+        self.assertContains(self.client.get("/admin/login/"), 'href="/favicon.svg"')
+
     def test_bank_details_validation(self):
         url = reverse("account")
         data = {"form": "bank", "bank_recipient": "Гольдштейн Дмитрий Александрович", "inn": "027207817147",
