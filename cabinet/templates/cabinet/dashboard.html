@@ -54,27 +54,12 @@
     <div class="stat-sub">Кварталов в кабинете: {{ reports_count }}</div>
   </div>
   {% endif %}
-  {% if upcoming %}
-  {% with r=upcoming.0 %}
-  <a class="card card-link" href="{% url 'releases' %}">
-    <div class="stat-label">До релиза «{{ r.title }}»</div>
-    <div class="stat-value">{{ r.days_left }} {{ r.days_left|plural:"день,дня,дней" }}</div>
-    <div class="stat-sub">{{ r.release_date|date:"j E Y" }} · {{ r.get_status_display|lower }}</div>
-  </a>
-  {% endwith %}
-  {% elif latest_release %}
-  <a class="card card-link" href="{% url 'releases' %}">
-    <div class="stat-label">Последний релиз</div>
-    <div class="stat-lead" style="margin-top:6px">{{ latest_release.title }}</div>
-    <div class="stat-sub">{{ latest_release.release_date|date:"j E Y" }}{% if latest_release.smart_link %} · есть смарт-ссылка{% endif %}</div>
-  </a>
-  {% else %}
+  {# Карточка релиза скрыта вместе с разделом «Релизы» #}
   <div class="card">
     <div class="stat-label">Акты на подпись</div>
     <div class="stat-value">{{ to_sign|length }}</div>
     <div class="stat-sub">{% if to_sign %}Скачайте, подпишите и загрузите в «Финансах»{% else %}Всё подписано{% endif %}</div>
   </div>
-  {% endif %}
 </div>
 
 <div class="grid grid-2">
