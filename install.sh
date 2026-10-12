@@ -97,6 +97,30 @@ DATA_DIR=$DATA_DIR
 EOF
   umask 022
 fi
+
+# ---------------------------------------------------------------------------
+# Почта для уведомлений (по запросу: EMAIL_SETUP=1)
+# ---------------------------------------------------------------------------
+if [ "${EMAIL_SETUP:-0}" = "1" ]; then
+  say "Настраиваем почту для уведомлений"
+  echo "Нужен пароль приложения Яндекса (Яндекс ID → Безопасность → Пароли приложений → Почта)." > /dev/tty
+  ask "С какого ящика отправлять" "info@qbiq-music.ru"; MAIL_USER="$REPLY"
+  ask "Куда присылать уведомления (можно несколько через запятую)" "$MAIL_USER"; MAIL_TO="$REPLY"
+  printf 'Пароль приложения (при вводе не отображается): ' > /dev/tty
+  IFS= read -rs MAIL_PASS < /dev/tty; echo > /dev/tty
+  MAIL_PASS="${MAIL_PASS// /}"
+  [ -n "$MAIL_PASS" ] || die "Пароль пустой — запустите ещё раз"
+  sed -i '/^EMAIL_HOST=/d;/^EMAIL_PORT=/d;/^EMAIL_HOST_USER=/d;/^EMAIL_HOST_PASSWORD=/d;/^NOTIFY_EMAILS=/d' "$ENV_FILE"
+  {
+    echo "EMAIL_HOST=smtp.yandex.ru"
+    echo "EMAIL_PORT=465"
+    echo "EMAIL_HOST_USER=$MAIL_USER"
+    echo "EMAIL_HOST_PASSWORD='$MAIL_PASS'"
+    echo "NOTIFY_EMAILS=$MAIL_TO"
+  } >> "$ENV_FILE"
+  unset MAIL_PASS
+  ok "Почта сохранена"
+fi
 set -a; . "$ENV_FILE"; set +a
 
 say "Устанавливаю зависимости сайта"
@@ -191,6 +215,15 @@ else
 fi
 
 rm -rf "$SRC_DIR.old"
+
+if [ "${EMAIL_SETUP:-0}" = "1" ]; then
+  say "Отправляю тестовое письмо"
+  if (cd "$SRC_DIR" && "$APP_DIR/venv/bin/python" manage.py send_test_email); then
+    ok "Проверьте ящик $NOTIFY_EMAILS"
+  else
+    printf '\033[1;31m✘ Письмо не ушло. Проверьте пароль приложения и что в настройках Яндекс Почты\n  включён доступ почтовых программ (Все настройки → Почтовые программы). Затем запустите ещё раз.\033[0m\n' > /dev/tty
+  fi
+fi
 
 cat > /dev/tty <<EOF
 
