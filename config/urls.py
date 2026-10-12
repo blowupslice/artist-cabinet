@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.contrib.auth import views as auth_views
 from django.urls import path
 
-from cabinet import views
+from cabinet import favicon, views
 
 urlpatterns = [
     path("", views.dashboard, name="dashboard"),
@@ -22,5 +22,8 @@ urlpatterns = [
     path("files/<path:path>", views.protected_file, name="protected_file"),
     path("staff/acts/<int:pk>.pdf", views.admin_act_pdf, name="admin_act_pdf"),
     path("healthz", views.healthz),
+    path("favicon.ico", favicon.favicon_ico),
+    path("favicon.svg", favicon.favicon_svg),
+    path("apple-touch-icon.png", favicon.apple_touch_icon),
     path("admin/", admin.site.urls),
 ]
