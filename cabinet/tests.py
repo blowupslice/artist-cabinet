@@ -340,7 +340,10 @@ class ArtistToolsTests(TestCase):
         self.assertContains(resp, "через 5 дней")
         self.assertContains(resp, "band.link/test")
         self.assertNotContains(resp, "Чужой")
-        self.assertContains(self.client.get(reverse("dashboard")), "До релиза «Новый»")
+        dash = self.client.get(reverse("dashboard"))
+        self.assertNotContains(dash, "До релиза")  # раздел «Релизы» пока скрыт
+        self.assertNotContains(dash, ">Релизы</a>")
+        self.assertContains(dash, "ДЕМО ВЕРСИЯ")
 
     def test_stream_imports(self):
         from .streams import import_playlists, import_streams
