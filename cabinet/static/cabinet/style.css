@@ -1,30 +1,34 @@
-/* Фирменный стиль QBIQ: тёмный фон с неоновыми волнами, цвета логотипа */
+/* Фирменный стиль QBIQ — по новому дизайну qbiq-music.ru: глубокий тёмно-бирюзовый фон, «таблетки», цвета логотипа */
 :root {
-  --bg: #050506;
-  --surface: rgba(17, 17, 20, 0.84);
-  --surface-2: rgba(255, 255, 255, 0.06);
-  --text: #f3f2ee;
-  --muted: #a3a29c;
-  --border: rgba(255, 255, 255, 0.09);
-  --accent: #e2583b;          /* кнопки основного сайта */
-  --accent-soft: rgba(226, 88, 59, 0.16);
-  --accent-text: #ffffff;
-  --brand-red: #f85555;       /* Q */
-  --brand-yellow: #f2ca57;    /* B */
-  --brand-teal: #46b9ae;      /* iQ */
-  --good: #46b9ae;
-  --good-soft: rgba(70, 185, 174, 0.16);
-  --warn: #f2ca57;
-  --warn-soft: rgba(242, 202, 87, 0.14);
+  --bg: #04191b;
+  --surface: #0a2629;
+  --surface-2: rgba(245, 245, 245, 0.05);
+  --surface-3: #0f3033;
+  --text: #f5f5f5;
+  --muted: #a9c2c1;
+  --muted-2: #c9d8d7;
+  --border: #16403f;
+  --border-strong: #3e6a69;
+  --accent: #f85554;          /* кнопка «Отправить демо» */
+  --accent-soft: rgba(248, 85, 84, 0.14);
+  --accent-text: #04191b;
+  --brand-red: #f85554;
+  --brand-yellow: #f1c957;
+  --brand-teal: #46b8ae;
+  --brand-deep: #0b6a6d;
+  --good: #46b8ae;
+  --good-soft: rgba(70, 184, 174, 0.16);
+  --warn: #f1c957;
+  --warn-soft: rgba(241, 201, 87, 0.14);
   --bad: #ff6b6b;
-  --radius: 6px;
-  --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
-  --bg-image: url("https://optim.tildacdn.com/tild3366-3831-4561-a635-653930353135/-/format/webp/ChatGPT_Image_17__20.png.webp");
+  --radius: 24px;
+  --radius-sm: 14px;
+  --shadow: none;
   color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
+html { -webkit-text-size-adjust: 100%; background: var(--bg); }
 body {
   margin: 0;
   background: var(--bg);
@@ -33,13 +37,13 @@ body {
   font-feature-settings: "tnum" 1;
   min-height: 100vh;
 }
-/* неоновые волны как на qbiq-music.ru, затемнённые для читаемости */
+/* мягкое бирюзовое свечение сверху, как фон секций основного сайта */
 body::before {
   content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
   background:
-    linear-gradient(180deg, rgba(0, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0.78) 45%, rgba(0, 0, 0, 0.9) 100%),
-    var(--bg-image) center / cover no-repeat,
-    #000;
+    radial-gradient(1100px 520px at 85% -10%, rgba(11, 106, 109, 0.32), transparent 70%),
+    radial-gradient(900px 480px at -10% 110%, rgba(11, 106, 109, 0.18), transparent 70%),
+    var(--bg);
 }
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
@@ -388,3 +392,114 @@ tfoot td { background: rgba(255, 255, 255, 0.06); }
   .nav { -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent); mask-image: linear-gradient(90deg, #000 85%, transparent); }
 }
 @media (max-width: 480px) { .nav a { padding: 7px 10px; } }
+
+/* ---------- v3: новый дизайн qbiq-music.ru (ноябрь 2026) ---------- */
+h1, h2, h3 { font-family: "Unbounded", "Onest", system-ui, sans-serif; }
+h1 { text-transform: uppercase; font-weight: 700; letter-spacing: .01em; font-size: 28px; }
+h2 { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text);
+  display: inline-flex; align-items: center; gap: 10px; }
+h2::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--brand-red); flex: none; }
+.release-title::before, .login-card h1::before { content: none; }
+a { color: var(--brand-yellow); }
+a:hover { text-decoration: underline; text-decoration-color: var(--brand-red); text-underline-offset: 3px; }
+::selection { background: var(--brand-red); color: var(--accent-text); }
+
+/* шапка: логотип и меню в «таблетках» с размытием */
+.topbar { background: transparent; border-bottom: 0; backdrop-filter: none; -webkit-backdrop-filter: none; padding-top: 14px; }
+.topbar-inner { height: auto; gap: 12px; }
+.brand { height: 48px; padding: 0 18px; border-radius: 999px; background: rgba(4, 25, 27, 0.88);
+  border: 1px solid var(--border); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); gap: 14px; }
+.brand-logo { height: 22px; width: auto; color: var(--text); display: block; flex: none; }
+.brand-name { border-left-color: var(--border); font-size: 10px; letter-spacing: .1em; color: var(--muted); gap: 2px; }
+.brand-demo { font-size: 8px; letter-spacing: .16em; color: var(--brand-red); }
+.nav { flex: 0 1 auto; margin: 0 auto; background: rgba(10, 38, 41, 0.88); border: 1px solid var(--border);
+  border-radius: 999px; padding: 6px; gap: 4px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.nav a { color: var(--text); padding: 9px 16px; border-radius: 999px; font-size: 13px; font-weight: 600; letter-spacing: .01em; transition: color .2s, background .2s; }
+.nav a:hover { background: transparent; color: var(--brand-yellow); text-decoration: none; }
+.nav a.active { background: var(--brand-red); color: var(--accent-text); border: 0; box-shadow: none; }
+.nav a.active:hover { background: var(--brand-yellow); color: var(--accent-text); }
+.user-chip { height: 48px; padding: 0 6px 0 16px; border-radius: 999px; background: var(--surface); border: 1px solid var(--border); font-size: 13px; }
+.link-btn { border-radius: 999px; padding: 8px 14px; color: var(--text); font-weight: 600; font-size: 13px; }
+.link-btn:hover { background: var(--border); color: var(--brand-yellow); }
+.viewas { background: var(--brand-yellow); color: var(--accent-text); font-weight: 600; }
+.page { padding-top: 32px; }
+
+/* карточки */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: none;
+  backdrop-filter: none; -webkit-backdrop-filter: none; padding: 24px; }
+.card.flush { padding: 0; }
+.card.flush .card-head { padding: 22px 24px 0; }
+.card-link:hover { border-color: var(--brand-red); }
+.stat-label { color: var(--muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; }
+.stat-value { font-family: "Unbounded", "Onest", sans-serif; font-weight: 700; letter-spacing: -0.01em; }
+.section-title { color: var(--muted); }
+
+/* кнопки — «таблетки» */
+.btn { border-radius: 999px; padding: 10px 18px; font-weight: 600; font-size: 13px; background: transparent;
+  border: 1px solid var(--border-strong); color: var(--text); transition: background .2s, border-color .2s, color .2s; }
+.btn:hover { background: var(--brand-red); border-color: var(--brand-red); color: var(--accent-text); text-decoration: none; }
+.btn-primary { background: var(--brand-red); border-color: var(--brand-red); color: var(--accent-text); }
+.btn-primary:hover { background: var(--brand-yellow); border-color: var(--brand-yellow); color: var(--accent-text); }
+.btn-sm { padding: 7px 13px; font-size: 12px; border-radius: 999px; }
+.badge { padding: 3px 10px; font-size: 11px; letter-spacing: .02em; }
+.badge-muted { background: var(--border); color: var(--muted-2); }
+
+/* периоды, графики, шкалы */
+.periods a { border-radius: 999px; background: var(--surface); border-color: var(--border); color: var(--text); font-size: 13px; font-weight: 600; padding: 8px 15px; }
+.periods a:hover { color: var(--brand-yellow); }
+.periods a.active { background: var(--brand-red); border-color: var(--brand-red); color: var(--accent-text); }
+.bars .bar { background: var(--border-strong); border-radius: 10px 10px 4px 4px; }
+.bars a:hover .bar, .bars a.current .bar { background: var(--brand-red); }
+.meter, .split-bar { background: var(--border); }
+.meter span { background: var(--brand-red); }
+.key-streams, .bar-streams, .daily span { background: var(--brand-teal); }
+.dyn-col { border-radius: 14px; }
+.dyn-col:hover { background: var(--surface-3); }
+.dyn-col.selected { background: var(--accent-soft); }
+
+/* списки, таблицы */
+.file-icon { border-radius: 50%; background: var(--accent-soft); color: var(--brand-red); }
+table.data th { background: rgba(4, 25, 27, 0.55); color: var(--muted); font-size: 11px; letter-spacing: .08em; }
+table.data td { border-top-color: var(--border); }
+tr.track-row:hover td { background: var(--surface-3); }
+tr.sub-row td { background: rgba(4, 25, 27, 0.6); }
+tfoot td { background: rgba(4, 25, 27, 0.55); }
+table.data tr.row-selected td { background: var(--accent-soft); }
+
+/* формы */
+.field input, .field select, .search { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); }
+.field input:focus, .field select:focus, .search:focus { outline: 2px solid var(--brand-red); outline-offset: 0; border-color: transparent; }
+.field label { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted-2); }
+.alert { border-radius: var(--radius-sm); }
+.comment { background: var(--accent-soft); border-left: 3px solid var(--brand-red); border-radius: var(--radius-sm); }
+.drop { border-color: var(--border-strong); border-radius: var(--radius-sm); }
+.cover { border-radius: 18px; background: var(--surface-3); }
+.todo { border-color: rgba(241, 201, 87, 0.4); background: rgba(241, 201, 87, 0.06); }
+.howto summary { color: var(--brand-yellow); }
+.steps li::before { background: var(--brand-red); color: var(--accent-text); }
+
+/* вход */
+.login-card { max-width: 420px; }
+.login-card .brand { height: auto; padding: 0; border: 0; background: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.login-card .brand-logo { height: 40px; }
+.login-card .card { border-radius: 28px; padding: 28px; }
+.login-card h1 { font-size: 20px; }
+
+/* адаптив шапки */
+@media (max-width: 960px) {
+  .topbar { padding-top: 10px; }
+  .topbar-inner { padding-bottom: 10px; }
+  .nav { margin: 0; flex: 1 0 100%; padding: 5px; -webkit-mask-image: none; mask-image: none; }
+  .nav a { flex: 1 0 auto; text-align: center; }
+}
+@media (max-width: 700px) {
+  .brand { height: 44px; padding: 0 14px; }
+  .brand-logo { height: 18px; }
+  .user-chip { height: 44px; padding-left: 6px; }
+  h1 { font-size: 21px; }
+  .card { padding: 18px; border-radius: 20px; }
+  .card.flush { padding: 0; }
+  .card.flush .card-head { padding: 18px 18px 0; }
+}
+@media (max-width: 480px) { .nav a { padding: 8px 10px; font-size: 12px; } }
+@media (max-width: 700px) { .login-card .brand-title { display: inline; } }
