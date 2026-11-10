@@ -1,0 +1,153 @@
+{% extends "cabinet/base.html" %}
+{% load cabinet_tags %}
+{% block title %}Музыка — {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="g-head">
+  <h1>Музыка</h1>
+  <p class="muted">{{ artist.name }}</p>
+</div>
+
+{% if todo %}
+<div class="g-actions">
+  {% for kind, r in todo %}
+  {% if kind == "act" %}
+  <a class="g-action" href="{% url 'finance_period' r.slug %}#sign"><span><b>Подпишите акт за {{ r.period_short }}</b><span class="muted small">Без подписи не сможем отправить выплату {{ payout.payable_now|money:"RUB" }}</span></span><span class="g-arrow" aria-hidden="true">›</span></a>
+  {% elif kind == "bank" %}
+  <a class="g-action" href="{% url 'account' %}?tab=bank#bank"><span><b>Укажите реквизиты для выплат</b><span class="muted small">Счёт, на который мы переводим деньги. Займёт 2 минуты</span></span><span class="g-arrow" aria-hidden="true">›</span></a>
+  {% endif %}
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if not reports %}
+<div class="card"><p class="empty" style="padding:0">Статистика появится, когда менеджер загрузит первый квартальный отчёт.</p></div>
+{% else %}
+
+<nav class="g-tabs" aria-label="Вкладки">
+  {% for key, label in tabs %}<a href="?tab={{ key }}{% if sel != 'all' %}&amp;p={{ sel }}{% endif %}{% if pl %}&amp;pl={{ pl|urlencode }}{% endif %}" class="{% if key == tab %}active{% endif %}">{{ label }}</a>{% endfor %}
+</nav>
+
+<form class="g-filters" method="get">
+  <input type="hidden" name="tab" value="{{ tab }}">
+  <label class="g-select"><span class="sr">Период</span>
+    <select name="p" onchange="this.form.submit()">
+      {% for key, label in options %}<option value="{{ key }}"{% if key == sel %} selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select></label>
+  <label class="g-select"><span class="sr">Площадка</span>
+    <select name="pl" onchange="this.form.submit()">
+      <option value="">Все площадки</option>
+      {% for p in platforms %}<option value="{{ p.key }}"{% if p.key == pl %} selected{% endif %}>{{ p.name }}</option>{% endfor %}
+    </select></label>
+  <noscript><button class="btn btn-sm" type="submit">Показать</button></noscript>
+</form>
+
+<div class="g-kpi">
+  <div><span class="g-big">{{ streams|short }}</span> <span class="muted">прослушиваний{% if sel != "all" %} · {{ title }}{% endif %}{% if pl %} · {{ pl }}{% endif %}</span></div>
+  <div><span class="g-mid">{{ platforms|length }}</span> <span class="muted">{{ platforms|length|plural:"площадка,площадки,площадок" }}</span></div>
+  {% if countries %}<div><span class="g-mid">{{ countries|length }}</span> <span class="muted">{{ countries|length|plural:"страна,страны,стран" }}</span></div>{% endif %}
+</div>
+
+{% if tab == "overview" %}
+<div class="g-tiles" role="group" aria-label="Фильтр по площадке">
+  <a href="?{% if sel != 'all' %}p={{ sel }}{% endif %}" class="g-tile{% if not pl %} active{% endif %}"><span>Все площадки</span><b>{{ tile_total|short }}</b></a>
+  {% for p in platform_tiles %}
+  <a href="?pl={{ p.key|urlencode }}{% if sel != 'all' %}&amp;p={{ sel }}{% endif %}" class="g-tile{% if p.key == pl %} active{% endif %}"><span>{{ p.name }}</span><b>{{ p.share|floatformat:"0" }}%</b></a>
+  {% endfor %}
+  {% if more_platforms %}<a href="?tab=platforms{% if sel != 'all' %}&amp;p={{ sel }}{% endif %}" class="g-tile"><span>Ещё {{ more_platforms }}</span><b>›</b></a>{% endif %}
+</div>
+
+<section class="card">
+  <div class="card-head"><h2>По кварталам</h2><span class="muted small">нажмите на квартал, чтобы открыть его</span></div>
+  <div class="g-bars">
+    {% for q in quarters %}
+    <a href="?p={{ q.report.slug }}{% if pl %}&amp;pl={{ pl|urlencode }}{% endif %}" class="{% if q.selected or forloop.last and sel == 'all' %}hot{% endif %}" title="{{ q.report.period_label }}: {{ q.quantity|num }} прослушиваний">
+      <span class="v">{{ q.quantity|short }}</span><span class="b" style="height: {{ q.bar|cssnum }}%"></span><span class="l">{{ q.report.period_short }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% if delta is not None %}<p class="muted small" style="margin:12px 0 0">Последний квартал к предыдущему: {% include "cabinet/_delta.html" with d=delta %}</p>{% endif %}
+</section>
+
+<div class="grid grid-2-even">
+  <section class="card">
+    <div class="card-head"><h2>Песни</h2><a class="small" href="?tab=tracks{% if sel != 'all' %}&amp;p={{ sel }}{% endif %}{% if pl %}&amp;pl={{ pl|urlencode }}{% endif %}">Все {{ tracks|length }}</a></div>
+    {% for t in tracks|slice:":5" %}
+    <div class="g-li"><span class="g-cover" aria-hidden="true"></span><span class="g-li-name">{{ t.name }}</span><span class="muted">{{ t.quantity|short }}</span></div>
+    {% endfor %}
+  </section>
+  <section class="card">
+    <div class="card-head"><h2>Страны</h2>{% if countries %}<a class="small" href="?tab=countries{% if sel != 'all' %}&amp;p={{ sel }}{% endif %}{% if pl %}&amp;pl={{ pl|urlencode }}{% endif %}">Все {{ countries|length }}</a>{% endif %}</div>
+    {% for c in countries|slice:":5" %}
+    <div class="g-row3"><span>{{ c.name }}</span><span class="g-track"><span style="width: {{ c.bar|cssnum }}%"></span></span><span class="muted r">{{ c.share|pct }}</span></div>
+    {% empty %}
+    <p class="empty">В отчётах этого периода нет разбивки по странам.</p>
+    {% endfor %}
+  </section>
+</div>
+
+
+
+{% elif tab == "tracks" %}
+<input class="search g-search" type="search" id="track-search" placeholder="Найти песню" aria-label="Поиск песни">
+<div class="g-songs">
+  {% for t in tracks %}
+  <div class="g-song" data-name="{{ t.name|lower }}">
+    <div class="g-song-top">
+      <span class="g-cover big" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></span>
+      <span class="g-song-name"><b>{{ t.name }}</b><span class="muted small">{{ t.share|pct }} всех прослушиваний</span></span>
+      <span class="g-song-num"><b>{{ t.quantity|short }}</b><span class="muted small">прослушиваний</span></span>
+    </div>
+    {% if t.platforms %}
+    <div class="g-minis">
+      {% for p in t.platforms %}<span class="g-mini"><span class="g-mini-top"><span>{{ p.name }}</span><span class="muted">{{ p.share|floatformat:"0" }}%</span></span><span class="g-track"><span style="width: {{ p.share|cssnum }}%"></span></span></span>{% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+{% elif tab == "platforms" %}
+<section class="card">
+  {% for p in platforms %}
+  <a class="g-row3 g-link" href="?pl={{ p.key|urlencode }}{% if sel != 'all' %}&amp;p={{ sel }}{% endif %}"><span>{{ p.name }}</span><span class="g-track"><span style="width: {{ p.bar|cssnum }}%"></span></span><span class="r"><b>{{ p.quantity|num }}</b> <span class="muted small">· {{ p.share|pct }}</span></span></a>
+  {% endfor %}
+</section>
+
+{% elif tab == "countries" %}
+<section class="card">
+  {% for c in countries %}
+  <div class="g-row3"><span>{{ c.name }}</span><span class="g-track"><span style="width: {{ c.bar|cssnum }}%"></span></span><span class="r"><b>{{ c.quantity|num }}</b> <span class="muted small">· {{ c.share|pct }}</span></span></div>
+  {% empty %}
+  <p class="empty">В отчётах этого периода нет разбивки по странам.</p>
+  {% endfor %}
+</section>
+{% endif %}
+{% endif %}
+
+{% if tab == "overview" %}
+{% if playlists %}
+<section class="card">
+  <div class="card-head"><h2>Ваши треки в плейлистах</h2></div>
+  <ul class="files">
+    {% for p in playlists %}
+    <li>
+      <span class="file-icon">{% include "cabinet/_icon.html" with name="list" %}</span>
+      <div class="file-main"><div class="file-title">{{ p.playlist }}</div>
+        <div class="muted small">{{ p.track }} · {{ p.platform }}{% if p.peak_position %} · лучшая позиция {{ p.peak_position }}{% endif %}</div></div>
+      <span class="muted small">{{ p.days }} {{ p.days|plural:"день,дня,дней" }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('track-search')?.addEventListener('input', e => {
+  const q = e.target.value.trim().toLowerCase();
+  document.querySelectorAll('.g-song').forEach(el => { el.hidden = q && !el.dataset.name.includes(q); });
+});
+</script>
+{% endblock %}
