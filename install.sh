@@ -128,6 +128,15 @@ say "Устанавливаю зависимости сайта"
 "$APP_DIR/venv/bin/pip" install -q --upgrade pip
 "$APP_DIR/venv/bin/pip" install -q -r "$SRC_DIR/requirements.txt"
 cd "$SRC_DIR"
+# Фирменный шрифт QBiQ Wide — тот же, что на sync.qbiq-music.ru (Roboto Flex, лицензия OFL)
+FONT_DIR="$SRC_DIR/cabinet/static/cabinet/fonts"; mkdir -p "$FONT_DIR"
+for s in cyrillic latin rub; do for w in 400 500 700; do
+  f="qbiq-wide-$s-$w.woff2"
+  if [ -s "$APP_DIR/fonts/$f" ]; then cp "$APP_DIR/fonts/$f" "$FONT_DIR/$f"
+  elif curl -fsS --max-time 20 -o "$FONT_DIR/$f" "https://sync.qbiq-music.ru/fonts/$f"; then
+    mkdir -p "$APP_DIR/fonts" && cp "$FONT_DIR/$f" "$APP_DIR/fonts/$f"
+  else rm -f "$FONT_DIR/$f"; fi
+done; done
 "$APP_DIR/venv/bin/python" manage.py migrate --noinput -v0
 "$APP_DIR/venv/bin/python" manage.py collectstatic --noinput -v0
 ok "Сайт собран"
