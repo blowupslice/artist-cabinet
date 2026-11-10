@@ -1,0 +1,111 @@
+{% extends "cabinet/base.html" %}
+{% load cabinet_tags %}
+{% block title %}Профиль — {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="g-profile-head">
+  <span class="g-avatar" aria-hidden="true">{{ artist.name|initials }}</span>
+  <div><h1>{{ artist.name }}</h1>
+    <p class="muted">ваша доля {{ artist.royalty_rate|floatformat:"-2" }}% · в кабинете с {{ artist.created_at|date:"E Y"|lower }}</p></div>
+</div>
+
+<div class="grid grid-2-even" style="align-items:start">
+  <div class="grid" style="align-content:start">
+    <section class="card">
+      <div class="card-head"><h2>{% if contracts|length > 1 %}Договоры{% else %}Договор{% endif %}</h2></div>
+      {% if contracts %}
+      <ul class="files">
+        {% for c in contracts %}
+        <li>
+          <span class="file-icon">{% include "cabinet/_icon.html" with name="doc" %}</span>
+          <div class="file-main">
+            <div class="file-title">{{ c.title }}{% if c.number %} № {{ c.number }}{% endif %}</div>
+            <div class="muted small">{% if c.signed_date %}от {{ c.signed_date|date:"j E Y" }}{% else %}подписан{% endif %}</div>
+          </div>
+          <a class="btn btn-sm" href="{% url 'download_contract' c.pk %}">{% include "cabinet/_icon.html" with name="download" %}<span class="hide-sm">Скачать</span></a>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="empty">Подписанный договор появится здесь, как только менеджер его загрузит.</p>
+      {% endif %}
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h2>Связь с менеджером</h2></div>
+      <p class="muted" style="margin:0 0 14px">Вопросы по отчётам, выплатам, релизам и данным — пишите, ответим.</p>
+      <div class="actions">
+        {% if SUPPORT_CONTACT %}
+          {% if "@" in SUPPORT_CONTACT and "." in SUPPORT_CONTACT and " " not in SUPPORT_CONTACT %}
+          <a class="btn btn-primary" href="mailto:{{ SUPPORT_CONTACT }}">Написать: {{ SUPPORT_CONTACT }}</a>
+          {% elif SUPPORT_CONTACT|first == "@" %}
+          <a class="btn btn-primary" href="https://t.me/{{ SUPPORT_CONTACT|slice:'1:' }}" target="_blank" rel="noopener">Написать в Telegram {{ SUPPORT_CONTACT }}</a>
+          {% else %}
+          <span class="btn">{{ SUPPORT_CONTACT }}</span>
+          {% endif %}
+        {% endif %}
+        <a class="btn" href="mailto:info@qbiq-music.ru">info@qbiq-music.ru</a>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h2>Смена пароля</h2></div>
+      {% if request.viewing_as %}
+      <p class="muted">В режиме просмотра за артиста пароль менять нельзя. Задайте новый пароль в админке.</p>
+      {% else %}
+      <form method="post" novalidate>
+        {% csrf_token %}<input type="hidden" name="form" value="password">
+        {% for f in form %}
+        <div class="field">
+          <label for="{{ f.id_for_label }}">{{ f.label }}</label>
+          {{ f }}
+          {% if f.help_text %}<div class="helptext">{{ f.help_text }}</div>{% endif %}
+          {{ f.errors }}
+        </div>
+        {% endfor %}
+        <button class="btn btn-primary" type="submit">Сменить пароль</button>
+      </form>
+      {% endif %}
+    </section>
+  </div>
+
+  <section class="card" id="bank">
+    <div class="card-head"><h2>Данные и реквизиты</h2></div>
+    <dl class="profile">
+      <dt>Артист</dt><dd>{{ artist.name }}</dd>
+      {% if artist.legal_name %}<dt>ФИО / компания</dt><dd>{{ artist.legal_name }}</dd>{% endif %}
+      <dt>Email (логин)</dt><dd>{{ artist.user.email }}</dd>
+      {% if artist.phone %}<dt>Телефон</dt><dd>{{ artist.phone }}</dd>{% endif %}
+    </dl>
+    <p class="small muted">Изменить эти данные можно через менеджера.</p>
+    <div class="g-sep"></div>
+    <div class="card-head"><h2>Реквизиты для выплат</h2>
+      {% if artist.has_bank_details %}<span class="badge badge-good">Заполнены</span>{% else %}<span class="badge badge-warn">Нужно заполнить</span>{% endif %}</div>
+    {% if artist.has_bank_details and not open_bank %}
+      <dl class="profile">
+        <dt>Получатель</dt><dd>{{ artist.bank_recipient }}</dd>
+        <dt>ИНН</dt><dd>{{ artist.inn }}</dd>
+        <dt>Банк</dt><dd>{{ artist.bank_name }}</dd>
+        <dt>БИК</dt><dd>{{ artist.bank_bik }}</dd>
+        <dt>Счёт</dt><dd>{{ artist.bank_name }} ··{{ artist.bank_account|slice:"-4:" }}</dd>
+      </dl>
+      {% if artist.bank_updated_at %}<p class="small muted">Обновлены {{ artist.bank_updated_at|date:"j E Y" }}</p>{% endif %}
+      <a class="btn btn-sm" href="?tab=bank#bank">Изменить</a>
+    {% else %}
+      <p class="small muted" style="margin-top:0">На этот счёт мы переводим ваши выплаты. Все реквизиты есть в приложении банка — раздел «Реквизиты счёта».</p>
+      {% if request.viewing_as %}<p class="muted">В режиме просмотра за артиста сохранять нельзя.</p>{% endif %}
+      <form method="post" novalidate>
+        {% csrf_token %}<input type="hidden" name="form" value="bank">
+        {% for f in bank_form %}
+        <div class="field">
+          <label for="{{ f.id_for_label }}">{{ f.label }}{% if f.field.required %} <span class="req">*</span>{% endif %}</label>
+          {{ f }}
+          {% if f.help_text %}<div class="helptext">{{ f.help_text }}</div>{% endif %}
+          {{ f.errors }}
+        </div>
+        {% endfor %}
+        <button class="btn btn-primary" type="submit"{% if request.viewing_as %} disabled{% endif %}>Сохранить реквизиты</button>
+      </form>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
