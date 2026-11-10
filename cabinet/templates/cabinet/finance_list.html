@@ -1,0 +1,79 @@
+{% extends "cabinet/base.html" %}
+{% load cabinet_tags %}
+{% block title %}Финансы — {{ SITE_NAME }}{% endblock %}
+{% block content %}
+<div class="g-head"><h1>Финансы</h1></div>
+
+<nav class="g-tabs" aria-label="Вкладки">
+  <a href="?tab=reports" class="{% if tab == 'reports' %}active{% endif %}">Отчёты</a>
+  <a href="?tab=payouts" class="{% if tab == 'payouts' %}active{% endif %}">Выплаты</a>
+</nav>
+
+{% if tab == "payouts" %}
+  {% if reports %}{% include "cabinet/_payout.html" %}{% else %}<div class="card"><p class="empty" style="padding:0">Выплаты появятся после первого квартального отчёта.</p></div>{% endif %}
+{% else %}
+
+{% if reports %}
+<section class="card g-balance">
+  <div>
+    {% if payout.payable_now > 0 %}
+    <div class="muted small">К выплате</div><div class="g-big">{{ payout.payable_now|money:"RUB" }}</div>
+    {% else %}
+    <div class="muted small">Копится до выплаты</div><div class="g-big">{{ payout.unpaid|money:"RUB" }}</div>
+    {% endif %}
+  </div>
+  <div class="g-balance-act">
+    {% with r=payout.report %}
+    {% if r and r.act_status == "to_sign" %}
+      <span class="warn-text">Нужна подпись акта за {{ r.period_short }}</span>
+      <a class="btn btn-primary" href="{% url 'finance_period' r.slug %}#sign">Подписать акт</a>
+    {% elif r and r.act_status == "review" %}
+      <span class="badge badge-warn">Акт за {{ r.period_short }} на проверке</span>
+    {% elif r and r.act_status == "signed" %}
+      <span class="badge badge-good">Акт принят — готовим перевод</span>
+    {% else %}
+      <span class="muted small">Выплачиваем от {{ payout.threshold|money:"RUB" }}</span>
+    {% endif %}
+    {% endwith %}
+    <a class="small" href="?tab=payouts">Как получить выплату</a>
+  </div>
+</section>
+
+<section class="card">
+  <div class="card-head"><h2>Доход по кварталам</h2><span class="muted small">ваша доля</span></div>
+  <div class="g-bars">
+    {% for b in bars %}
+    <a href="{% url 'finance_period' b.report.slug %}" class="{% if forloop.last %}hot{% endif %}" title="{{ b.report.period_label }}: {{ b.report.total_amount|money:b.report.currency }}">
+      <span class="v">{{ b.report.total_amount|floatformat:"0" }}&nbsp;₽</span><span class="b" style="height: {{ b.bar|cssnum }}%"></span><span class="l">{{ b.report.period_short }}</span>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+
+{% if years|length > 1 %}
+<div class="g-chips">
+  <a href="?" class="g-chip{% if not year %} active{% endif %}">Все годы</a>
+  {% for y in years %}<a href="?y={{ y|stringformat:"d" }}" class="g-chip{% if year == y|stringformat:"d" %} active{% endif %}">{{ y|stringformat:"d" }}</a>{% endfor %}
+</div>
+{% endif %}
+
+<div class="g-reports">
+  {% for r in shown %}
+  <div class="g-report">
+    <span class="g-doc" aria-hidden="true">{% include "cabinet/_icon.html" with name="doc" %}</span>
+    <a class="g-report-main" href="{% url 'finance_period' r.slug %}"><b>Отчёт за {{ r.period_label }}</b><span class="muted small">{{ r.total_quantity|num }} прослушиваний</span></a>
+    <span class="g-report-sum">{{ r.total_amount|money:r.currency }}</span>
+    <span>{% if r.act_status == "signed" %}<span class="badge badge-good">подписан</span>{% elif r.act_status == "review" %}<span class="badge badge-warn">на проверке</span>{% else %}<span class="badge badge-warn">ждёт подписи</span>{% endif %}</span>
+    <span class="g-dl">
+      <a href="{% url 'export_summary' r.pk %}" title="Сводка в Excel">XLS</a>
+      {% if r.detail_file %}<a href="{% url 'download_report_file' r.pk 'detail' %}" title="Детализированный отчёт">Отчёт</a>{% endif %}
+      <a href="{% url 'download_report_file' r.pk 'act' %}" title="Акт (PDF)">Акт</a>
+    </span>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card"><p class="empty" style="padding:0">Как только менеджер загрузит первый квартальный отчёт, он появится здесь.</p></div>
+{% endif %}
+{% endif %}
+{% endblock %}
