@@ -4,7 +4,7 @@
 {% block content %}
 <div class="page-head">
   <div>
-    <p class="muted small" style="margin:0 0 4px">Финансовый отчёт</p>
+    <p class="small" style="margin:0 0 6px"><a href="{% url 'finance' %}">← Все отчёты</a></p>
     <h1>{% if report %}{{ report.period_label }}{% else %}Отчётов пока нет{% endif %}</h1>
   </div>
   {% if report %}
@@ -135,7 +135,7 @@
   </section>
 
   <section class="card" style="align-self:start">
-    <div class="card-head"><h2>По площадкам</h2><a class="small" href="{% url 'stats' %}?p={{ report.slug }}">Подробная статистика →</a></div>
+    <div class="card-head"><h2>По площадкам</h2><a class="small" href="{% url 'dashboard' %}?p={{ report.slug }}">Статистика квартала →</a></div>
     {% for p in by_platform %}
     <div class="platform-row">
       <div class="platform-name">{{ p.platform }} <span class="muted small">· {{ p.share|pct }}</span></div>
