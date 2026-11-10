@@ -58,3 +58,27 @@ def plural(n, forms):
     if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
         return few
     return many
+
+
+@register.filter
+def short(value):
+    """Короткое число: 1 846 300 → «1,8 млн», 425 108 → «425 тыс.», 9 870 → «9 870»."""
+    try:
+        v = int(value or 0)
+    except (TypeError, ValueError):
+        return value
+    if abs(v) >= 1_000_000:
+        s = f"{v / 1_000_000:.1f}".rstrip("0").rstrip(".").replace(".", ",")
+        return f"{s}{NBSP}млн"
+    if abs(v) >= 10_000:
+        return f"{round(v / 1000)}{NBSP}тыс."
+    return f"{v:,}".replace(",", NBSP)
+
+
+@register.filter
+def initials(name):
+    """«Лиза Север» → «ЛС», «AZAGIR» → «AZ», «RISHAT THV» → «RT»."""
+    words = [w for w in str(name or "").replace("-", " ").split() if w[:1].isalnum()]
+    if len(words) >= 2:
+        return (words[0][0] + words[1][0]).upper()
+    return (words[0][:2] if words else "").upper()
