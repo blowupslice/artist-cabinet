@@ -22,7 +22,7 @@ from django.views.decorators.http import require_POST
 
 from .forms import BankDetailsForm, EmailLoginForm, PasswordChangeFormRu, SignedActForm
 from .models import Artist, Contract, PlaylistPlacement, Release, Report, RoyaltyLine
-from .stats import breakdown, pct_change, rate_per_1000, split
+from .stats import breakdown, country_name, pct_change, rate_per_1000, split
 
 
 class LoginView(auth_views.LoginView):
@@ -102,45 +102,118 @@ def published_reports(artist):
 # Страницы
 # ---------------------------------------------------------------------------
 
-@artist_required
-def dashboard(request):
-    artist = request.artist
-    reports = list(published_reports(artist))
-    history = list(reversed(reports[:8]))
-    max_total = max((r.total_amount for r in history), default=0) or 1
-    for r in history:
-        r.bar = float(r.total_amount / max_total * 100)
-    to_sign = [r for r in reports if r.act_status == Report.ActStatus.TO_SIGN]
-    total_all = sum((r.total_amount for r in reports), Decimal(0))
+def _by_quantity(lines, field, limit=None):
+    """Прослушивания по полю (площадка, страна, трек), по убыванию прослушиваний.
+    Строки без прослушиваний, но с доходом (например, синхронизация) тоже показываем."""
+    rows = [r for r in lines.values(field).annotate(q=Sum("quantity"), a=Sum("amount"))
+            if (r["q"] or 0) > 0 or (r["a"] or 0) > 0]
+    rows.sort(key=lambda r: (-(r["q"] or 0), -(r["a"] or 0)))
+    total_q = sum(r["q"] or 0 for r in rows)
+    total_a = sum(r["a"] or 0 for r in rows)
+    by_q = total_q > 0
+    top = (rows[0]["q"] if by_q else rows[0]["a"]) if rows else 0
+    out = []
+    for r in rows[:limit] if limit else rows:
+        key = r[field]
+        name = (country_name(key) if field == "country" else key) or "Не указано"
+        v = (r["q"] or 0) if by_q else (r["a"] or 0)
+        out.append({"key": key or "", "name": name, "quantity": r["q"] or 0, "amount": r["a"] or 0,
+                    "share": float(v / (total_q if by_q else total_a) * 100) if (total_q if by_q else total_a) else 0,
+                    "bar": float(v / top * 100) if top else 0})
+    return out
+
+
+def _period_options(reports):
+    years = sorted({r.year for r in reports}, reverse=True)
+    opts = [("all", "За всё время")]
+    opts += [(r.slug, r.period_short) for r in reports]
+    opts += [(str(y), f"{y} год") for y in years]
+    return opts
+
+
+def _select_period(reports, sel):
+    if sel and sel.isdigit():
+        chosen = [r for r in reports if r.year == int(sel)]
+        if chosen:
+            return sel, chosen, f"{sel} год"
+    if sel and sel != "all":
+        r = next((r for r in reports if r.slug == sel), None)
+        if r:
+            return sel, [r], r.period_label
+    return "all", reports, "За всё время"
+
+
+MUSIC_TABS = [("overview", "Обзор"), ("tracks", "Песни"), ("platforms", "Площадки"), ("countries", "Страны")]
+
+
+def _todo(artist):
     from .acts import payout_overview
     payout = payout_overview(artist)
-    releases = list(artist.releases.filter(is_published=True)[:20])
-    upcoming = sorted([r for r in releases if r.is_upcoming], key=lambda r: r.release_date)
-    latest_release = next((r for r in releases if not r.is_upcoming and r.status == Release.Status.RELEASED), None)
-    playlists = list(artist.playlist_placements.all()[:5])
-    fresh = None  # «Свежие прослушивания» пока скрыты
     todo = []
     if payout.report and payout.report.act_status == Report.ActStatus.TO_SIGN:
         todo.append(("act", payout.report))
     if not artist.has_bank_details:
         todo.append(("bank", None))
-    return render(request, "cabinet/dashboard.html", {
-        "artist": artist,
-        "payout": payout,
-        "todo": todo,
-        "upcoming": upcoming[:2],
-        "latest_release": latest_release,
-        "playlists": playlists,
-        "fresh": fresh,
-        "contracts": artist.contracts.all(),
-        "latest": reports[0] if reports else None,
-        "history": history,
-        "to_sign": to_sign,
-        "total_all": total_all,
-        "reports_count": len(reports),
-        "currency": reports[0].currency if reports else settings.DEFAULT_CURRENCY,
-        "nav": "dashboard",
+    return payout, todo
+
+
+@artist_required
+def dashboard(request):
+    """«Музыка»: сколько слушают, где, откуда и какие песни."""
+    artist = request.artist
+    reports = list(published_reports(artist))
+    payout, todo = _todo(artist)
+    tab = request.GET.get("tab") if request.GET.get("tab") in dict(MUSIC_TABS) else "overview"
+    ctx = {"artist": artist, "reports": reports, "nav": "music", "tab": tab, "tabs": MUSIC_TABS,
+           "todo": todo, "payout": payout,
+           "playlists": list(artist.playlist_placements.all()[:5])}
+    if not reports:
+        return render(request, "cabinet/music.html", ctx)
+
+    sel, selected, title = _select_period(reports, request.GET.get("p"))
+    base_lines = RoyaltyLine.objects.filter(report__in=selected)
+    platforms_all = _by_quantity(base_lines, "platform")
+    pl = request.GET.get("pl") or ""
+    if pl and pl not in {p["key"] for p in platforms_all}:
+        pl = ""
+    lines = base_lines.filter(platform=pl) if pl else base_lines
+
+    streams = lines.aggregate(q=Sum("quantity"))["q"] or 0
+    countries = [c for c in _by_quantity(lines, "country") if c["key"]]
+    tracks = _by_quantity(lines, "track")
+    if tab == "tracks":
+        per = {}
+        for row in lines.values("track", "platform").annotate(q=Sum("quantity")).order_by("-q"):
+            if row["q"]:
+                per.setdefault(row["track"], []).append(row)
+        for t in tracks:
+            rows = per.get(t["key"], [])
+            t["platforms"] = [{"name": r["platform"] or "Другие", "share": r["q"] / t["quantity"] * 100}
+                              for r in rows[:4]] if t["quantity"] else []
+
+    # Столбики: последние 4 квартала (прослушивания, с учётом площадки)
+    last4 = list(reversed(reports[:4]))
+    q_lines = RoyaltyLine.objects.filter(report__in=last4)
+    if pl:
+        q_lines = q_lines.filter(platform=pl)
+    per_report = {r["report"]: r["q"] or 0 for r in q_lines.values("report").annotate(q=Sum("quantity"))}
+    top_q = max(per_report.values(), default=0) or 1
+    quarters = [{"report": r, "quantity": per_report.get(r.pk, 0),
+                 "bar": per_report.get(r.pk, 0) / top_q * 100,
+                 "selected": sel == r.slug} for r in last4]
+    delta = None
+    if len(quarters) >= 2 and quarters[-2]["quantity"]:
+        delta = pct_change(quarters[-1]["quantity"], quarters[-2]["quantity"])
+
+    tile_total = sum(p["quantity"] for p in platforms_all)
+    ctx.update({
+        "sel": sel, "title": title, "options": _period_options(reports), "pl": pl,
+        "streams": streams, "platforms": platforms_all, "tile_total": tile_total,
+        "platform_tiles": platforms_all[:5], "more_platforms": max(len(platforms_all) - 5, 0),
+        "countries": countries, "tracks": tracks, "quarters": quarters, "delta": delta,
+        "track_query": request.GET.get("q", ""),
     })
+    return render(request, "cabinet/music.html", ctx)
 
 
 @artist_required
@@ -148,13 +221,15 @@ def finance(request, slug=None):
     artist = request.artist
     reports = list(published_reports(artist))
     if not reports:
-        return render(request, "cabinet/finance.html", {"artist": artist, "reports": [], "nav": "finance"})
+        payout, todo = _todo(artist)
+        return render(request, "cabinet/finance_list.html", {"artist": artist, "reports": [], "nav": "finance",
+                                                             "payout": payout, "todo": todo, "tab": "reports"})
 
-    report = reports[0]
-    if slug:
-        report = next((r for r in reports if r.slug == slug), None)
-        if report is None:
-            raise Http404("Отчёт не найден")
+    if not slug:
+        return _finance_list(request, artist, reports)
+    report = next((r for r in reports if r.slug == slug), None)
+    if report is None:
+        raise Http404("Отчёт не найден")
 
     lines = report.lines.all()
     by_platform = list(
@@ -206,114 +281,32 @@ def finance(request, slug=None):
         "by_platform": by_platform,
         "by_track": by_track,
         "nav": "finance",
+        "todo": _todo(artist)[1],
     })
 
 
-def _prev_label(sel, prev_reports):
-    if not prev_reports:
-        return ""
-    if not sel.isdigit():
-        return "к " + prev_reports[0].period_short
-    qs = sorted(r.quarter for r in prev_reports)
-    year = prev_reports[0].year
-    if len(qs) == 4:
-        return f"к {year} году"
-    if len(qs) == 1:
-        return f"к Q{qs[0]} {year}"
-    return f"к Q{qs[0]}–Q{qs[-1]} {year}"
+def _finance_list(request, artist, reports):
+    payout, todo = _todo(artist)
+    tab = "payouts" if request.GET.get("tab") == "payouts" else "reports"
+    years = sorted({r.year for r in reports}, reverse=True)
+    year = request.GET.get("y")
+    shown = [r for r in reports if str(r.year) == year] if year and year.isdigit() else reports
+    last8 = list(reversed(reports[:8]))
+    top = max((r.total_amount for r in last8), default=0) or 1
+    bars = [{"report": r, "bar": float(r.total_amount / top * 100)} for r in last8]
+    return render(request, "cabinet/finance_list.html", {
+        "artist": artist, "reports": reports, "shown": shown, "years": years, "year": year or "",
+        "bars": bars, "payout": payout, "todo": todo, "tab": tab, "nav": "finance",
+    })
 
 
 @artist_required
 def stats(request):
-    artist = request.artist
-    reports = list(published_reports(artist))
-    from .streams import recent_summary
-    # Блок «Свежие прослушивания» пока скрыт (данные в админке сохраняются)
-    extra = {"fresh": None, "playlists": list(artist.playlist_placements.all()[:50])}
-    if not reports:
-        return render(request, "cabinet/stats.html", {"artist": artist, "reports": [], "nav": "stats", **extra})
-
-    years = sorted({r.year for r in reports}, reverse=True)
-    # «За всё время» пока убрано — по умолчанию открывается последний год
-    options = [(str(y), f"{y} год") for y in years] + [(r.slug, r.period_short) for r in reports]
-    sel = request.GET.get("p") or str(years[0])
-    if sel not in {k for k, _ in options}:
-        sel = str(years[0])
-
-    prev_reports = None
-    if sel == "all":
-        selected = reports
-        title = "За всё время"
-    elif sel.isdigit():
-        y = int(sel)
-        selected = [r for r in reports if r.year == y]
-        title = f"{y} год"
-        # сравниваем с теми же кварталами прошлого года, а не с целым годом
-        qs_sel = {r.quarter for r in selected}
-        prev = [r for r in reports if r.year == y - 1 and r.quarter in qs_sel]
-        prev_reports = prev or None
-    else:
-        idx = next(i for i, r in enumerate(reports) if r.slug == sel)
-        selected = [reports[idx]]
-        title = reports[idx].period_label
-        prev_reports = [reports[idx + 1]] if idx + 1 < len(reports) else None
-
-    lines = RoyaltyLine.objects.filter(report__in=selected)
-    prev_lines = RoyaltyLine.objects.filter(report__in=prev_reports) if prev_reports else None
-
-    total = sum((r.total_amount for r in selected), Decimal(0))
-    streams = sum((r.total_quantity for r in selected), 0)
-    prev_total = sum((r.total_amount for r in prev_reports), Decimal(0)) if prev_reports else None
-    prev_streams = sum((r.total_quantity for r in prev_reports), 0) if prev_reports else None
-
-    platforms = breakdown(lines, "platform", prev_lines)
-    tracks = breakdown(lines, "track", prev_lines)
-    countries = breakdown(lines, "country", prev_lines)
-    has_countries = any(c["key"] for c in countries)
-
-    # Динамика по кварталам (по возрастанию времени)
-    timeline = list(reversed(reports))
-    max_amount = max((r.total_amount for r in timeline), default=0) or 1
-    max_streams = max((r.total_quantity for r in timeline), default=0) or 1
-    selected_ids = {r.pk for r in selected}
-    dynamics = []
-    prev_r = None
-    for r in timeline:
-        dynamics.append({
-            "report": r,
-            "amount_bar": float(r.total_amount / max_amount * 100),
-            "streams_bar": r.total_quantity / max_streams * 100,
-            "rate": rate_per_1000(r.total_amount, r.total_quantity),
-            "delta": pct_change(r.total_amount, prev_r.total_amount) if prev_r else None,
-            "selected": sel != "all" and r.pk in selected_ids,
-        })
-        prev_r = r
-
-    best_quarter = max(reports, key=lambda r: r.total_amount)
-    return render(request, "cabinet/stats.html", {
-        "artist": artist,
-        "reports": reports,
-        "options": options,
-        "sel": sel,
-        "title": title,
-        "currency": reports[0].currency,
-        "total": total,
-        "streams": streams,
-        "rate": rate_per_1000(total, streams),
-        "delta_amount": pct_change(total, prev_total) if prev_total else None,
-        "delta_streams": pct_change(streams, prev_streams) if prev_streams else None,
-        "has_prev": bool(prev_reports),
-        "prev_label": _prev_label(sel, prev_reports),
-        "platforms": platforms,
-        "tracks": tracks,
-        "countries": countries if has_countries else [],
-        "dynamics": dynamics,
-        "best_quarter": best_quarter,
-        "top_track": tracks[0] if tracks else None,
-        "top_platform": platforms[0] if platforms else None,
-        "nav": "stats",
-        **extra,
-    })
+    """Старый адрес «Статистики» — теперь это раздел «Музыка»."""
+    from django.urls import reverse
+    url = reverse("dashboard")
+    p = request.GET.get("p")
+    return redirect(f"{url}?p={quote(p)}" if p else url)
 
 
 @artist_required
@@ -337,8 +330,9 @@ def account(request):
         messages.success(request, "Реквизиты сохранены. Выплаты придут на этот счёт.")
         nxt = request.GET.get("next") or ""
         return redirect(nxt if nxt.startswith("/") and not nxt.startswith("//") else "account")
-    return render(request, "cabinet/account.html", {
-        "artist": artist, "form": form, "bank_form": bank_form, "nav": "account",
+    return render(request, "cabinet/profile.html", {
+        "artist": artist, "form": form, "bank_form": bank_form, "nav": "profile",
+        "contracts": artist.contracts.all(), "todo": _todo(artist)[1],
         "open_bank": which == "bank" or request.GET.get("tab") == "bank" or not artist.has_bank_details,
     })
 
