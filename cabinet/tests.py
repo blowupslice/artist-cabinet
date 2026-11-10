@@ -117,10 +117,13 @@ class AccessTests(TestCase):
     def test_stats_page(self):
         self.client.login(username="one@example.com", password="Pass-word-123")
         for q in ["", "?p=all", "?p=2026", "?p=2026-q2", "?p=bad"]:
-            resp = self.client.get(reverse("stats") + q)
-            self.assertEqual(resp.status_code, 200, q)
-            self.assertContains(resp, "Звук")
-        self.assertNotContains(self.client.get(reverse("stats")), "Два")
+            for tab in ["", "&tab=tracks", "&tab=platforms", "&tab=countries"]:
+                resp = self.client.get(reverse("dashboard") + (q or "?") + tab)
+                self.assertEqual(resp.status_code, 200, q + tab)
+            self.assertContains(self.client.get(reverse("dashboard") + (q or "?") + "&tab=platforms"), "Звук")
+        self.assertNotContains(self.client.get(reverse("dashboard") + "?tab=tracks"), "Два")
+        self.assertContains(self.client.get(reverse("dashboard") + "?pl=Звук"), "Звук")
+        self.assertRedirects(self.client.get(reverse("stats") + "?p=2026-q2"), reverse("dashboard") + "?p=2026-q2")
 
     def test_own_files_ok_foreign_files_404(self):
         self.client.login(username="one@example.com", password="Pass-word-123")
@@ -275,8 +278,8 @@ class ArtistToolsTests(TestCase):
         self.assertEqual(p.year_end_year, 2026)
 
     def test_dashboard_shows_payout_and_todo(self):
+        self.assertContains(self.client.get(reverse("finance") + "?tab=payouts"), "Баланс и выплаты")
         resp = self.client.get(reverse("dashboard"))
-        self.assertContains(resp, "Баланс и выплаты")
         self.assertContains(resp, "Укажите реквизиты")
         self.assertContains(resp, "Подпишите акт")
 
@@ -332,7 +335,7 @@ class ArtistToolsTests(TestCase):
         self.artist.refresh_from_db()
         self.assertTrue(self.artist.has_bank_details)
         self.assertEqual(self.artist.bank_account, "40817810000000000001")
-        self.assertContains(self.client.get(reverse("dashboard")), "Т-Банк ··0001")
+        self.assertContains(self.client.get(reverse("account")), "Т-Банк ··0001")
 
     def test_releases_page(self):
         import datetime as dt
@@ -379,9 +382,8 @@ class ArtistToolsTests(TestCase):
                   [None, "VK Музыка", "Если поругались", 66, 7, "02.10.2026", "08.10.2026"]])
         counts, _ = import_playlists(f)
         self.assertEqual(counts, {"Эсчевский": 2})
-        resp = self.client.get(reverse("stats"))
+        resp = self.client.get(reverse("dashboard"))
         self.assertNotContains(resp, "Свежие прослушивания")  # блок пока скрыт
-        self.assertNotContains(resp, "За всё время")
         self.assertContains(resp, "Если поругались")
         self.assertContains(self.client.get(reverse("dashboard")), "Ваши треки в плейлистах")
 
